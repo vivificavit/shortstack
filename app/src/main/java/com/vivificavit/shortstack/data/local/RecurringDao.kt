@@ -15,6 +15,14 @@ interface RecurringDao {
     @Query("SELECT * FROM recurring_entries ORDER BY createdAt ASC, id ASC")
     suspend fun getAllRecurringOnce(): List<RecurringEntry>
 
+    /** Kids with at least one repeating entry. */
+    @Query("SELECT DISTINCT kidName FROM recurring_entries")
+    fun getKidsWithRecurring(): Flow<List<String>>
+
+    /** Categories a repeating entry will use, so they count as in use. */
+    @Query("SELECT DISTINCT category FROM recurring_entries")
+    fun getRecurringCategories(): Flow<List<String>>
+
     @Query("SELECT * FROM recurring_entries WHERE id = :id")
     suspend fun getRecurring(id: Long): RecurringEntry?
 

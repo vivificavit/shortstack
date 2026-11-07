@@ -24,7 +24,6 @@
     <string name="action_add">Add</string>
     <string name="action_apply">Apply</string>
     <string name="action_cancel">Cancel</string>
-    <string name="action_delete">Delete</string>
     <string name="action_done">Done</string>
     <string name="action_remove">Remove</string>
     <string name="action_save">Save</string>
@@ -214,16 +213,29 @@
     <string name="message_goal_added">Added goal \"%1$s\"</string>
     <string name="message_goal_deleted">Deleted goal \"%1$s\"</string>
     <string name="message_recurring_added">Added %1$s for %2$s</string>
-    <string name="message_recurring_caught_up">Added %1$s \"%2$s\" entries</string>
+    <plurals name="message_recurring_caught_up">
+        <item quantity="one">Added %1$s \"%2$s\" entry</item>
+        <item quantity="other">Added %1$s \"%2$s\" entries</item>
+    </plurals>
+    <string name="message_recurring_starts">\"%1$s\" starts %2$s</string>
     <string name="message_recurring_stopped">Stopped repeating \"%1$s\"</string>
     <string name="message_goal_reached">You\'ve saved enough for %1$s!</string>
     <string name="message_goal_bought">Bought %1$s. Nice saving!</string>
     <string name="message_move_failed">There isn\'t that much to move.</string>
-    <string name="message_export_succeeded">Exported %1$s entries to backup</string>
+    <plurals name="message_export_succeeded">
+        <item quantity="one">Exported %1$s entry to backup</item>
+        <item quantity="other">Exported %1$s entries to backup</item>
+    </plurals>
     <string name="message_export_failed">Backup export failed. %1$s</string>
-    <string name="message_csv_export_succeeded">Exported %1$s entries to spreadsheet</string>
+    <plurals name="message_csv_export_succeeded">
+        <item quantity="one">Exported %1$s entry to spreadsheet</item>
+        <item quantity="other">Exported %1$s entries to spreadsheet</item>
+    </plurals>
     <string name="message_csv_export_failed">Spreadsheet export failed. %1$s</string>
-    <string name="message_restore_succeeded">Restored %1$s entries from backup</string>
+    <plurals name="message_restore_succeeded">
+        <item quantity="one">Restored %1$s entry from backup</item>
+        <item quantity="other">Restored %1$s entries from backup</item>
+    </plurals>
     <string name="message_restore_failed">Restore failed. The file may not be a valid backup. %1$s</string>
 
     <!-- Entry and category icons (screen reader labels) -->

@@ -65,8 +65,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.data.model.Goal
 import com.vivificavit.shortstack.ui.components.AddKidDialog
@@ -82,9 +84,11 @@ import com.vivificavit.shortstack.ui.components.RepeatingEntriesDialog
 import com.vivificavit.shortstack.ui.components.RestoreBackupDialog
 import com.vivificavit.shortstack.ui.theme.EntryButtonNavy
 import com.vivificavit.shortstack.ui.viewmodel.TrackerViewModel
+import com.vivificavit.shortstack.util.DateRanges
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class TrackerTab(@StringRes val titleRes: Int) {
@@ -121,12 +125,19 @@ fun TrackerMainScreen(
     val lastCategoryByType by viewModel.lastCategoryByType.collectAsStateWithLifecycle()
     val startDateMillis by viewModel.startDateMillis.collectAsStateWithLifecycle()
     val endDateMillis by viewModel.endDateMillis.collectAsStateWithLifecycle()
+    val quickRange by viewModel.quickRange.collectAsStateWithLifecycle()
     val recurring by viewModel.recurring.collectAsStateWithLifecycle()
 
-    // Add repeating entries that came due while the app was closed or in the background.
-    LifecycleStartEffect(viewModel) {
-        viewModel.addDueRecurring()
-        onStopOrDispose { }
+    // Add repeating entries that came due while the app was closed or in the background,
+    // then again at each midnight for as long as it stays open.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, viewModel) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                viewModel.addDueRecurring()
+                delay(DateRanges.millisUntilNextDay() + 1_000L)
+            }
+        }
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -209,7 +220,11 @@ fun TrackerMainScreen(
     LaunchedEffect(viewModel) {
         viewModel.uiMessages.collect { message ->
             val result = snackbarHostState.showSnackbar(
-                message = resources.getString(message.resId, *message.args.toTypedArray()),
+                message = if (message.pluralsRes != 0) {
+                    resources.getQuantityString(message.pluralsRes, message.quantity, *message.args.toTypedArray())
+                } else {
+                    resources.getString(message.resId, *message.args.toTypedArray())
+                },
                 actionLabel = message.onUndo?.let { resources.getString(R.string.action_undo) },
                 duration = SnackbarDuration.Short
             )
@@ -663,7 +678,12 @@ fun TrackerMainScreen(
         TrendsDateRangeDialog(
             startDateMillis = startDateMillis,
             endDateMillis = endDateMillis,
+            quickRange = quickRange,
             onDismiss = { showDateRangeDialog = false },
+            onQuickRange = { range ->
+                viewModel.setQuickRange(range)
+                showDateRangeDialog = false
+            },
             onApply = { start, end ->
                 viewModel.setDateRange(start, end)
                 showDateRangeDialog = false

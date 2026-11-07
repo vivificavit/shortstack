@@ -1,5 +1,6 @@
 package com.vivificavit.shortstack.ui.viewmodel
 
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -39,6 +40,8 @@ import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 class TrackerViewModel(
     private val repository: TransactionRepository,
@@ -130,10 +133,14 @@ class TrackerViewModel(
                 initialValue = emptyMap()
             )
 
-    /** Kids who have at least one entry or goal, so removing them asks first. */
+    /** Kids who have at least one entry, goal or repeating entry, so removing them asks first. */
     val kidsWithEntries: StateFlow<Set<String>> =
-        combine(repository.allTransactions, repository.kidsWithGoals) { list, kidsWithGoals ->
-            list.map { tx -> tx.kidName }.toSet() + kidsWithGoals
+        combine(
+            repository.allTransactions,
+            repository.kidsWithGoals,
+            repository.kidsWithRecurring
+        ) { list, kidsWithGoals, kidsWithRecurring ->
+            list.map { tx -> tx.kidName }.toSet() + kidsWithGoals + kidsWithRecurring
         }
             .stateIn(
                 scope = viewModelScope,
@@ -152,10 +159,9 @@ class TrackerViewModel(
             )
 
     val usedCategories: StateFlow<Set<String>> =
-        repository.allTransactions
-            .map { list ->
-                list.map { tx -> tx.category.lowercase() }.toSet()
-            }
+        combine(repository.allTransactions, repository.recurringCategories) { list, recurringCategories ->
+            (list.map { tx -> tx.category } + recurringCategories).map { it.lowercase() }.toSet()
+        }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
@@ -170,10 +176,28 @@ class TrackerViewModel(
     private val _hiddenCategories = MutableStateFlow<Set<String>>(emptySet())
     val hiddenCategories: StateFlow<Set<String>> = _hiddenCategories
 
+    private val _today = MutableStateFlow(LocalDate.now())
+
+    /** Today's date, moved on when the app comes to the front and at midnight (see [addDueRecurring]). */
+    val today: StateFlow<LocalDate> = _today
+
+    // The Trends date range: a quick range, which moves with [today], or days the user picked.
+    private val _quickRange = MutableStateFlow<DateRanges.QuickRange?>(null)
+    val quickRange: StateFlow<DateRanges.QuickRange?> = _quickRange
     // Raw DatePicker selections (midnight UTC); see DateRanges.toLocalRange.
-    private val _startDateMillis = MutableStateFlow<Long?>(null)
+    private val _pickedStart = MutableStateFlow<Long?>(null)
+    private val _pickedEnd = MutableStateFlow<Long?>(null)
+
+    private val dateRange: StateFlow<Pair<Long?, Long?>> =
+        combine(_quickRange, _pickedStart, _pickedEnd, _today) { quick, start, end, today ->
+            quick?.let { DateRanges.quickRange(it, today) } ?: (start to end)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null to null)
+
+    private val _startDateMillis: StateFlow<Long?> =
+        dateRange.map { it.first }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val startDateMillis: StateFlow<Long?> = _startDateMillis
-    private val _endDateMillis = MutableStateFlow<Long?>(null)
+    private val _endDateMillis: StateFlow<Long?> =
+        dateRange.map { it.second }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val endDateMillis: StateFlow<Long?> = _endDateMillis
 
     private val _uiMessages = MutableSharedFlow<UiMessage>()
@@ -181,6 +205,11 @@ class TrackerViewModel(
 
     private suspend fun emitMessage(@StringRes resId: Int, vararg args: String) {
         _uiMessages.emit(UiMessage(resId, args.toList()))
+    }
+
+    /** A message that says "1 entry" or "3 entries"; [count] is also its first argument. */
+    private suspend fun emitCountMessage(@PluralsRes resId: Int, count: Int, vararg args: String) {
+        _uiMessages.emit(UiMessage(args = listOf(count.toString()) + args, pluralsRes = resId, quantity = count))
     }
 
     init {
@@ -225,7 +254,7 @@ class TrackerViewModel(
         )
 
     /** The selected kid's balance and goal savings, day by day over the Trends date range. */
-    val balanceHistory: StateFlow<List<BalancePoint>> = combine(kidMoney, _startDateMillis, _endDateMillis) { money, start, end ->
+    val balanceHistory: StateFlow<List<BalancePoint>> = combine(kidMoney, dateRange, _today) { money, (start, end), today ->
         if (money == null) {
             emptyList()
         } else {
@@ -234,7 +263,7 @@ class TrackerViewModel(
                 moves = money.snapshot.moves,
                 startDate = start?.let(DateRanges::pickerMillisToLocalDate),
                 endDate = end?.let(DateRanges::pickerMillisToLocalDate),
-                today = LocalDate.now()
+                today = today
             )
         }
     }
@@ -383,9 +412,17 @@ class TrackerViewModel(
         }
     }
 
+    /** Shows the Trends tab for days the user picked; null ends are open. */
     fun setDateRange(startMillis: Long?, endMillis: Long?) {
-        _startDateMillis.value = startMillis
-        _endDateMillis.value = endMillis
+        _quickRange.value = null
+        _pickedStart.value = startMillis
+        _pickedEnd.value = endMillis
+    }
+
+    /** Shows a quick range, which keeps ending today as the days go by. All time clears the range. */
+    fun setQuickRange(range: DateRanges.QuickRange) {
+        setDateRange(null, null)
+        _quickRange.value = range.takeIf { it != DateRanges.QuickRange.ALL_TIME }
     }
 
     /**
@@ -420,9 +457,18 @@ class TrackerViewModel(
                         startTimestamp = timestamp,
                         goalId = split?.goalId,
                         goalCents = split?.amountCents
-                    )
+                    ),
+                    coverGoalId = coverGoalId
                 )
-                if (added > 1) emitMessage(R.string.message_recurring_caught_up, added.toString(), title.trim())
+                when {
+                    // A start in the future: say when, since nothing appears in the ledger yet.
+                    added == 0 -> emitMessage(
+                        R.string.message_recurring_starts,
+                        title.trim(),
+                        DateRanges.timestampToLocalDate(timestamp).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+                    )
+                    added > 1 -> emitCountMessage(R.plurals.message_recurring_caught_up, added, title.trim())
+                }
                 return@launch
             }
             val transaction = Transaction(
@@ -437,14 +483,18 @@ class TrackerViewModel(
         }
     }
 
-    /** Adds every repeating entry that has come due. Runs whenever the app comes to the front. */
+    /**
+     * Moves [today] on and adds every repeating entry that has come due. Runs when
+     * the app comes to the front and at each midnight while it's open.
+     */
     fun addDueRecurring() {
+        _today.value = LocalDate.now()
         viewModelScope.launch {
             repository.addDueRecurring().forEach { (entry, count) ->
                 if (count == 1) {
                     emitMessage(R.string.message_recurring_added, entry.title, entry.kidName)
                 } else {
-                    emitMessage(R.string.message_recurring_caught_up, count.toString(), entry.title)
+                    emitCountMessage(R.plurals.message_recurring_caught_up, count, entry.title)
                 }
             }
         }
@@ -557,7 +607,7 @@ class TrackerViewModel(
         viewModelScope.launch {
             repository.exportToJson(openStream)
                 .onSuccess { count ->
-                    emitMessage(R.string.message_export_succeeded, count.toString())
+                    emitCountMessage(R.plurals.message_export_succeeded, count)
                 }
                 .onFailure { error ->
                     emitMessage(R.string.message_export_failed, error.localizedMessage.orEmpty())
@@ -569,7 +619,7 @@ class TrackerViewModel(
         viewModelScope.launch {
             repository.exportToCsv(openStream)
                 .onSuccess { count ->
-                    emitMessage(R.string.message_csv_export_succeeded, count.toString())
+                    emitCountMessage(R.plurals.message_csv_export_succeeded, count)
                 }
                 .onFailure { error ->
                     emitMessage(R.string.message_csv_export_failed, error.localizedMessage.orEmpty())
@@ -581,7 +631,7 @@ class TrackerViewModel(
         viewModelScope.launch {
             repository.importFromJson(openStream, replaceExisting = true)
                 .onSuccess { count ->
-                    emitMessage(R.string.message_restore_succeeded, count.toString())
+                    emitCountMessage(R.plurals.message_restore_succeeded, count)
                     // Repeating entries in the backup may have come due since it was made.
                     addDueRecurring()
                 }

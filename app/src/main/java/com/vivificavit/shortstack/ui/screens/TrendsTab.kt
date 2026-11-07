@@ -36,7 +36,6 @@ import com.vivificavit.shortstack.ui.components.StackedBars
 import com.vivificavit.shortstack.ui.components.categoryColor
 import com.vivificavit.shortstack.util.BalancePoint
 import com.vivificavit.shortstack.util.DateRanges
-import java.time.LocalDate
 
 /** Income and expenses side by side for a date range, each split by category. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,7 +150,9 @@ private val QuickRangeLabels = listOf(
 fun TrendsDateRangeDialog(
     startDateMillis: Long?,
     endDateMillis: Long?,
+    quickRange: DateRanges.QuickRange?,
     onDismiss: () -> Unit,
+    onQuickRange: (DateRanges.QuickRange) -> Unit,
     onApply: (startMillis: Long?, endMillis: Long?) -> Unit
 ) {
     val pickerState = rememberDateRangePickerState(
@@ -176,7 +177,9 @@ fun TrendsDateRangeDialog(
             }
         }
     ) {
-        val today = remember { LocalDate.now() }
+        // All time is what shows when no range is set.
+        val shownQuick = quickRange
+            ?: DateRanges.QuickRange.ALL_TIME.takeIf { startDateMillis == null && endDateMillis == null }
         DateRangePicker(
             state = pickerState,
             modifier = Modifier.weight(1f),
@@ -194,10 +197,9 @@ fun TrendsDateRangeDialog(
                     QuickRangeLabels.chunked(2).forEach { pair ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             pair.forEach { (quick, label) ->
-                                val range = DateRanges.quickRange(quick, today)
                                 FilterChip(
-                                    selected = range == (startDateMillis to endDateMillis),
-                                    onClick = { onApply(range.first, range.second) },
+                                    selected = quick == shownQuick,
+                                    onClick = { onQuickRange(quick) },
                                     label = {
                                         Text(
                                             text = stringResource(label),

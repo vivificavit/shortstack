@@ -70,6 +70,10 @@ interface TransactionDao {
               SELECT 1 FROM transactions
               WHERE LOWER(category) = LOWER(:name)
           )
+          AND NOT EXISTS (
+              SELECT 1 FROM recurring_entries
+              WHERE LOWER(category) = LOWER(:name)
+          )
         """
     )
     suspend fun deleteUnusedCategory(name: String): Int

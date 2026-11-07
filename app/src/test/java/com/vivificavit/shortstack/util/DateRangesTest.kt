@@ -70,4 +70,10 @@ class DateRangesTest {
             range(DateRanges.QuickRange.LAST_YEAR, afterLeapDay)
         )
     }
+
+    @Test
+    fun timeUntilMidnightIsMeasuredInLocalTime() {
+        val evening = java.time.ZonedDateTime.of(2026, 11, 6, 23, 30, 0, 0, ZoneOffset.UTC)
+        assertEquals(30 * 60 * 1_000L, DateRanges.millisUntilNextDay(evening))
+    }
 }

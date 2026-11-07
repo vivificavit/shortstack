@@ -92,6 +92,12 @@ class TransactionRepository(
             }
             .flowOn(Dispatchers.IO)
 
+    /** Kids with at least one repeating entry. */
+    val kidsWithRecurring: Flow<List<String>> = recurringDao.getKidsWithRecurring()
+
+    /** Categories that repeating entries will use. */
+    val recurringCategories: Flow<List<String>> = recurringDao.getRecurringCategories()
+
     /** A kid's repeating entries, oldest first. */
     fun getRecurringForKid(kidName: String): Flow<List<RecurringEntry>> = recurringDao.getRecurringForKid(kidName)
 
@@ -273,10 +279,13 @@ class TransactionRepository(
 
     /**
      * Starts a repeating entry and adds the ones already due: the first, when
-     * it's dated today or earlier, and any missed since. Returns how many it added.
+     * it's dated today or earlier, and any missed since. A start in the future
+     * adds nothing yet. For spending, [coverGoalId] pays first if the first
+     * entry needs goal money. Returns how many it added.
      */
     suspend fun addRecurring(
         entry: RecurringEntry,
+        coverGoalId: Long? = null,
         now: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault()
     ): Int = withContext(Dispatchers.IO) {
@@ -284,18 +293,28 @@ class TransactionRepository(
             transactionDao.insertKid(KidProfile(name = entry.kidName))
             transactionDao.insertCategory(CategoryEntity(name = entry.category))
             val id = recurringDao.upsertRecurring(entry.copy(occurrences = 0))
-            addDue(entry.copy(id = id, occurrences = 0), now, zone)
+            addDue(entry.copy(id = id, occurrences = 0), now, zone, firstCoverGoalId = coverGoalId)
         }
     }
 
-    /** Saves changes to a repeating entry. They apply to the entries it adds from now on. */
-    suspend fun saveRecurring(entry: RecurringEntry) {
+    /**
+     * Saves changes to a repeating entry. They apply to the entries it adds from
+     * now on. A new frequency restarts the schedule from its next due date, so
+     * it neither skips ahead nor fills in entries that were never due.
+     */
+    suspend fun saveRecurring(entry: RecurringEntry, zone: ZoneId = ZoneId.systemDefault()) {
         withContext(Dispatchers.IO) {
             database.withTransaction {
                 transactionDao.insertCategory(CategoryEntity(name = entry.category))
                 // Keep the count from the database, in case entries were added while this was being edited.
                 val current = recurringDao.getRecurring(entry.id) ?: return@withTransaction
-                recurringDao.upsertRecurring(entry.copy(occurrences = current.occurrences))
+                val saved = if (entry.frequency == current.frequency) {
+                    entry.copy(occurrences = current.occurrences)
+                } else {
+                    val next = RecurringMath.occurrence(current.startTimestamp, current.frequency, current.occurrences, zone)
+                    entry.copy(startTimestamp = next.toInstant().toEpochMilli(), occurrences = 0)
+                }
+                recurringDao.upsertRecurring(saved)
             }
         }
     }
@@ -325,9 +344,9 @@ class TransactionRepository(
         }
     }
 
-    private suspend fun addDue(entry: RecurringEntry, now: Long, zone: ZoneId): Int {
+    private suspend fun addDue(entry: RecurringEntry, now: Long, zone: ZoneId, firstCoverGoalId: Long? = null): Int {
         val due = RecurringMath.dueTimestamps(entry, now, zone)
-        due.forEach { timestamp ->
+        due.forEachIndexed { index, timestamp ->
             insertTransaction(
                 Transaction(
                     kidName = entry.kidName,
@@ -338,7 +357,8 @@ class TransactionRepository(
                     timestamp = timestamp,
                     recurringId = entry.id
                 ),
-                split = recurringSplit(entry)
+                split = recurringSplit(entry),
+                coverGoalId = firstCoverGoalId.takeIf { index == 0 }
             )
         }
         if (due.isNotEmpty()) recurringDao.upsertRecurring(entry.copy(occurrences = entry.occurrences + due.size))

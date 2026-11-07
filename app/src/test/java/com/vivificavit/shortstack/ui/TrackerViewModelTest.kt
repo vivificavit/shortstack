@@ -13,6 +13,7 @@ import com.vivificavit.shortstack.data.model.TransactionType
 import com.vivificavit.shortstack.repository.TransactionRepository
 import com.vivificavit.shortstack.ui.viewmodel.TrackerViewModel
 import com.vivificavit.shortstack.ui.viewmodel.UiMessage
+import com.vivificavit.shortstack.util.DateRanges
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -429,4 +430,23 @@ class TrackerViewModelTest {
         assertEquals(emptyList<Goal>(), repository.getGoalsForKid("Sam").first())
         assertEquals(emptyList<Any>(), repository.getGoalMovesForKid("Sam").first())
     }
+
+    @Test
+    fun quickRangesFollowTodayAndAllTimeClearsTheRange() = runBlocking {
+        val vm = TrackerViewModel(repository, FakeStore())
+        vm.setQuickRange(DateRanges.QuickRange.LAST_WEEK)
+        val week = DateRanges.quickRange(DateRanges.QuickRange.LAST_WEEK, vm.today.value)
+        vm.startDateMillis.awaitValue { it == week.first }
+        vm.endDateMillis.awaitValue { it == week.second }
+        assertEquals(DateRanges.QuickRange.LAST_WEEK, vm.quickRange.value)
+
+        // Picking days by hand replaces the quick range; All time clears both.
+        vm.setDateRange(1L, null)
+        vm.startDateMillis.awaitValue { it == 1L }
+        assertEquals(null, vm.quickRange.value)
+        vm.setQuickRange(DateRanges.QuickRange.ALL_TIME)
+        vm.startDateMillis.awaitValue { it == null }
+        assertEquals(null, vm.quickRange.value)
+    }
 }
+

@@ -123,4 +123,56 @@ class RecurringEntriesTest {
         assertEquals(1, schedule.occurrences)
         assertEquals(schedule.id, entries().single().recurringId)
     }
+
+    @Test
+    fun changingHowOftenRestartsFromTheNextDueDate() = runBlocking {
+        // Weekly from Oct 2: six entries through Nov 6, next due Nov 13.
+        repository.addRecurring(allowance("2026-10-02"), now = at("2026-11-06"), zone = zone)
+        val weekly = repository.getRecurringForKid("Sam").first().single()
+        assertEquals(6, weekly.occurrences)
+
+        repository.saveRecurring(weekly.copy(frequency = Frequency.MONTHLY), zone = zone)
+        val monthly = repository.getRecurringForKid("Sam").first().single()
+        assertEquals(at("2026-11-13"), monthly.startTimestamp)
+        assertEquals(0, monthly.occurrences)
+        // Nothing is filled in or skipped: Nov 13, then a month later.
+        assertEquals(emptyList<Any>(), repository.addDueRecurring(now = at("2026-11-12"), zone = zone))
+        assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-12-12"), zone = zone).map { it.count })
+        assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-12-13"), zone = zone).map { it.count })
+        assertEquals(8, entries().size)
+    }
+
+    @Test
+    fun aFutureStartAddsNothingUntilItsDay() = runBlocking {
+        assertEquals(0, repository.addRecurring(allowance("2026-11-13"), now = at("2026-11-11"), zone = zone))
+        assertEquals(emptyList<Any>(), entries())
+        assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-11-13"), zone = zone).map { it.count })
+        assertEquals(at("2026-11-13"), entries().single().timestamp)
+    }
+
+    @Test
+    fun aRepeatingExpenseTakesFromTheChosenGoalFirst() = runBlocking {
+        repository.insertTransaction(
+            Transaction(kidName = "Sam", title = "Birthday", amountCents = 3_500, type = TransactionType.CREDIT, timestamp = 1)
+        )
+        val bike = repository.saveGoal(Goal(kidName = "Sam", name = "Bike", targetCents = 9_000, createdAt = 1))
+        val game = repository.saveGoal(Goal(kidName = "Sam", name = "Game", targetCents = 9_000, createdAt = 2))
+        repository.moveMoney("Sam", null, bike, 2_000)
+        repository.moveMoney("Sam", null, game, 1_000)
+        // $5 pocket money; a $12 subscription needs $7 from goals, and Bike was picked.
+        val subscription = allowance("2026-11-06").copy(title = "Streaming", amountCents = 1_200, type = TransactionType.DEBIT)
+        repository.addRecurring(subscription, coverGoalId = bike, now = at("2026-11-06"), zone = zone)
+
+        val saved = repository.getMoneyForKid("Sam").first().moves.groupBy { it.goalId }.mapValues { (_, m) -> m.sumOf { it.amountCents } }
+        assertEquals(1_300L, saved[bike])
+        assertEquals(1_000L, saved[game])
+    }
+
+    @Test
+    fun aCategoryOnlyAScheduleUsesStaysInUse() = runBlocking {
+        repository.addRecurring(allowance("2026-11-13").copy(category = "Streaming"), now = at("2026-11-11"), zone = zone)
+        assertEquals(false, repository.deleteUnusedCategory("Streaming"))
+        assertEquals(listOf("Sam"), repository.kidsWithRecurring.first())
+        assertEquals(listOf("Streaming"), repository.recurringCategories.first())
+    }
 }

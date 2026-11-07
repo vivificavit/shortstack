@@ -1,9 +1,11 @@
 package com.vivificavit.shortstack.util
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
 
 /**
  * Material3's DatePicker reports the chosen day as midnight UTC. Reading
@@ -28,6 +30,10 @@ object DateRanges {
     }
 
     /** Quick choices for the chart date range. */
+    /** How long until the next local midnight, so work can wait for the day to change. */
+    fun millisUntilNextDay(now: ZonedDateTime = ZonedDateTime.now()): Long =
+        Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay(now.zone)).toMillis()
+
     /** Quick picks for the Trends date range, each ending today. */
     enum class QuickRange { LAST_WEEK, LAST_MONTH, LAST_YEAR, ALL_TIME }
 

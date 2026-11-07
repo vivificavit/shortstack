@@ -197,7 +197,7 @@ fun EntryBottomSheet(
     existingRepeat: Frequency? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val today = remember { LocalDate.now() }
+    val today = LocalToday.current
     val initialType = existing?.type ?: schedule?.type
         ?: if (buyingGoal != null) TransactionType.DEBIT else TransactionType.CREDIT
     var selectedType by rememberSaveable { mutableStateOf(initialType) }
@@ -428,7 +428,8 @@ fun EntryBottomSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                selectedType == TransactionType.DEBIT && money != null && parsedAmount != null -> {
+                // Editing a schedule changes future entries, so there's no goal to cover yet.
+                selectedType == TransactionType.DEBIT && money != null && parsedAmount != null && schedule == null -> {
                     // What the goals would have to give up so the kid never has less than they've set aside.
                     val fromGoals = (money.savedCents - (money.balanceCents - parsedAmount).coerceAtLeast(0L))
                         .coerceIn(0L, money.savedCents)
@@ -448,7 +449,11 @@ fun EntryBottomSheet(
                     repeat = repeat,
                     // A schedule being edited stops from the Repeating entries list, not here.
                     allowNever = schedule == null,
-                    onPick = { repeat = it }
+                    onPick = {
+                        repeat = it
+                        // Only a repeating entry can start in the future; a one-off records what already happened.
+                        if (it == null && entryDate.isAfter(today)) entryDate = today
+                    }
                 )
             }
             existingRepeat?.let { frequency ->
@@ -563,12 +568,13 @@ fun EntryBottomSheet(
     if (pickingDate) {
         val pickerState = rememberDatePickerState(
             initialSelectedDateMillis = DateRanges.localDateToPickerMillis(entryDate),
-            // No future dates: an entry records something that already happened.
+            // No future dates for a one-off entry, which records something that already
+            // happened; a repeating one can start on a later day, like next payday.
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                    !DateRanges.pickerMillisToLocalDate(utcTimeMillis).isAfter(today)
+                    repeat != null || !DateRanges.pickerMillisToLocalDate(utcTimeMillis).isAfter(today)
 
-                override fun isSelectableYear(year: Int): Boolean = year <= today.year
+                override fun isSelectableYear(year: Int): Boolean = repeat != null || year <= today.year
             }
         )
         DatePickerDialog(

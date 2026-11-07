@@ -253,7 +253,7 @@ fun GoalEditDialog(
     )
 
     if (pickingDate) {
-        val tomorrow = remember { LocalDate.now().plusDays(1) }
+        val tomorrow = LocalToday.current.plusDays(1)
         val pickerState = rememberDatePickerState(
             initialSelectedDateMillis = targetDay?.let { DateRanges.localDateToPickerMillis(LocalDate.ofEpochDay(it)) },
             selectableDates = remember(tomorrow) {
@@ -593,7 +593,7 @@ internal fun formatBuyByDate(targetDay: Long): String =
 internal fun goalSaveMoreText(progress: GoalProgress): String {
     val remaining = Money.format(progress.remainingCents)
     val targetDay = progress.goal.targetDay ?: return stringResource(R.string.goal_save_more, remaining)
-    val today = remember { LocalDate.now().toEpochDay() }
+    val today = LocalToday.current.toEpochDay()
     return when (val pace = GoalMath.pace(progress.remainingCents, today, targetDay)) {
         is GoalMath.Pace.Weekly -> stringResource(
             R.string.goal_save_more_weekly, remaining, formatBuyByDate(targetDay), Money.format(pace.cents)

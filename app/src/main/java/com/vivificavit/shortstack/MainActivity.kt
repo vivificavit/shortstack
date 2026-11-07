@@ -6,10 +6,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vivificavit.shortstack.data.local.AppDatabase
 import com.vivificavit.shortstack.data.local.DataStoreSelectedKidStore
 import com.vivificavit.shortstack.repository.TransactionRepository
+import com.vivificavit.shortstack.ui.components.LocalToday
 import com.vivificavit.shortstack.ui.screens.TrackerMainScreen
 import com.vivificavit.shortstack.ui.theme.AllowanceTrackerTheme
 import com.vivificavit.shortstack.ui.viewmodel.TrackerViewModel
@@ -37,7 +41,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             AllowanceTrackerTheme {
                 val trackerViewModel: TrackerViewModel = viewModel(factory = viewModelFactory)
-                TrackerMainScreen(viewModel = trackerViewModel)
+                val today by trackerViewModel.today.collectAsStateWithLifecycle()
+                CompositionLocalProvider(LocalToday provides today) {
+                    TrackerMainScreen(viewModel = trackerViewModel)
+                }
             }
         }
     }
