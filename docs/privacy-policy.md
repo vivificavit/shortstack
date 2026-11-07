@@ -1,6 +1,6 @@
 # shortstack privacy policy
 
-_Last updated: [DATE]_
+_Last updated: November 7, 2026_
 
 shortstack is an app for parents to keep track of their kids' allowance, spending and savings goals. This policy explains what happens to the information you put into it.
 
@@ -43,4 +43,4 @@ If this policy changes, the new version will be posted at this address with a ne
 
 ## Contact
 
-Questions about this policy: [CONTACT EMAIL]
+Questions about this policy: [apps@vivificavit.com](mailto:apps@vivificavit.com)
