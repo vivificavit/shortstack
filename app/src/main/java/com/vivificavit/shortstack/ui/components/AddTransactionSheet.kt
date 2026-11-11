@@ -198,6 +198,7 @@ fun EntryBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val today = LocalToday.current
+    val moneyFormat = LocalMoneyFormat.current
     val initialType = existing?.type ?: schedule?.type
         ?: if (buyingGoal != null) TransactionType.DEBIT else TransactionType.CREDIT
     var selectedType by rememberSaveable { mutableStateOf(initialType) }
@@ -211,8 +212,8 @@ fun EntryBottomSheet(
     var categoryChosenByUser by rememberSaveable { mutableStateOf(existing != null || schedule != null) }
     var amountInput by rememberSaveable {
         mutableStateOf(
-            (existing?.amountCents ?: schedule?.amountCents)?.let { Money.toInput(it) }
-                ?: buyingGoal?.let { Money.toInput(it.goal.targetCents) }
+            (existing?.amountCents ?: schedule?.amountCents)?.let { moneyFormat.toInput(it) }
+                ?: buyingGoal?.let { moneyFormat.toInput(it.goal.targetCents) }
                 ?: ""
         )
     }
@@ -233,7 +234,7 @@ fun EntryBottomSheet(
     var splitGoalId by rememberSaveable {
         mutableStateOf(initialSplit?.goalId ?: openGoals.firstOrNull()?.goal?.id)
     }
-    var splitInput by rememberSaveable { mutableStateOf(initialSplit?.let { Money.toInput(it.amountCents) } ?: "") }
+    var splitInput by rememberSaveable { mutableStateOf(initialSplit?.let { moneyFormat.toInput(it.amountCents) } ?: "") }
     // Which goal pays first when spending is more than pocket money; null until the kid picks one.
     var coverGoalChoice by rememberSaveable { mutableStateOf<Long?>(null) }
     val goalsWithMoney = openGoals.filter { it.savedCents > 0L }
@@ -352,13 +353,13 @@ fun EntryBottomSheet(
             OutlinedTextField(
                 value = amountInput,
                 onValueChange = { newValue ->
-                    if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+                    if (Money.isAmountInput(newValue)) {
                         amountInput = newValue
                         inputError = null
                     }
                 },
                 label = { Text(stringResource(R.string.entry_amount_label)) },
-                placeholder = { Text(stringResource(R.string.entry_amount_hint)) },
+                placeholder = { Text(moneyFormat.toInput(0L)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
@@ -405,7 +406,7 @@ fun EntryBottomSheet(
                         inputError = null
                         // Start from a fifth, so turning it on shows how a split works.
                         if (on && splitInput.isBlank() && parsedAmount != null) {
-                            splitInput = Money.toInput(GoalMath.splitCents(parsedAmount, 20))
+                            splitInput = moneyFormat.toInput(GoalMath.splitCents(parsedAmount, 20))
                         }
                     },
                     goalId = splitGoalId,
@@ -421,7 +422,7 @@ fun EntryBottomSheet(
                     Text(
                         text = stringResource(
                             R.string.entry_split_locked,
-                            Money.format(locked.amountCents),
+                            formatMoney(locked.amountCents),
                             locked.goalName
                         ),
                         style = MaterialTheme.typography.bodySmall,
@@ -531,7 +532,7 @@ fun EntryBottomSheet(
                 // A split can be at most the entry itself; anything else up to the largest entry.
                 val maxCents = if (errorRes == R.string.entry_split_error) parsedAmount else null
                 Text(
-                    text = stringResource(errorRes, Money.format(1L), Money.format(maxCents ?: Money.MAX_ENTRY_CENTS)),
+                    text = stringResource(errorRes, formatMoney(1L), formatMoney(maxCents ?: Money.MAX_ENTRY_CENTS)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -673,6 +674,7 @@ private fun GoalSplitSection(
     onSplitInput: (String) -> Unit
 ) {
     val splitCents = Money.parseToCents(splitInput)
+    val moneyFormat = LocalMoneyFormat.current
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         border = BorderStroke(1.dp, if (on) CreditGreen else MaterialTheme.colorScheme.outlineVariant)
@@ -719,10 +721,10 @@ private fun GoalSplitSection(
                 OutlinedTextField(
                     value = splitInput,
                     onValueChange = { newValue ->
-                        if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d{0,2}$"))) onSplitInput(newValue)
+                        if (Money.isAmountInput(newValue)) onSplitInput(newValue)
                     },
                     label = { Text(stringResource(R.string.entry_split_amount_label)) },
-                    placeholder = { Text(stringResource(R.string.entry_amount_hint)) },
+                    placeholder = { Text(moneyFormat.toInput(0L)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth()
@@ -733,7 +735,7 @@ private fun GoalSplitSection(
                             val cents = GoalMath.splitCents(amountCents, percent)
                             FilterChip(
                                 selected = splitCents == cents,
-                                onClick = { onSplitInput(Money.toInput(cents)) },
+                                onClick = { onSplitInput(moneyFormat.toInput(cents)) },
                                 label = {
                                     Text(
                                         if (percent == 100) {
@@ -751,8 +753,8 @@ private fun GoalSplitSection(
                         Text(
                             text = stringResource(
                                 R.string.entry_split_summary,
-                                Money.format(amountCents - splitCents),
-                                Money.format(splitCents),
+                                formatMoney(amountCents - splitCents),
+                                formatMoney(splitCents),
                                 goalName
                             ),
                             style = MaterialTheme.typography.bodySmall,
@@ -787,7 +789,7 @@ private fun CoverWarning(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = stringResource(R.string.entry_cover_warning, Money.format(fromGoalsCents)),
+                text = stringResource(R.string.entry_cover_warning, formatMoney(fromGoalsCents)),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -804,7 +806,7 @@ private fun CoverWarning(
                                 stringResource(
                                     R.string.move_place,
                                     progress.goal.name,
-                                    Money.format(progress.savedCents)
+                                    formatMoney(progress.savedCents)
                                 )
                             )
                         }
@@ -827,20 +829,20 @@ private fun PurchaseSummary(goal: GoalProgress, priceCents: Long?) {
     val fromSavings = minOf(goal.savedCents, priceCents ?: goal.savedCents)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            text = stringResource(R.string.entry_buy_uses, Money.format(fromSavings), goal.goal.name),
+            text = stringResource(R.string.entry_buy_uses, formatMoney(fromSavings), goal.goal.name),
             style = MaterialTheme.typography.bodyMedium,
             color = CreditGreen,
             fontWeight = FontWeight.SemiBold
         )
         if (priceCents != null && priceCents > goal.savedCents) {
             Text(
-                text = stringResource(R.string.entry_buy_extra, Money.format(priceCents - goal.savedCents)),
+                text = stringResource(R.string.entry_buy_extra, formatMoney(priceCents - goal.savedCents)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else if (priceCents != null && priceCents < goal.savedCents) {
             Text(
-                text = stringResource(R.string.entry_buy_left, Money.format(goal.savedCents - priceCents)),
+                text = stringResource(R.string.entry_buy_left, formatMoney(goal.savedCents - priceCents)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

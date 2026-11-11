@@ -60,7 +60,7 @@ import com.vivificavit.shortstack.ui.theme.CategoryTagBackground
 import com.vivificavit.shortstack.ui.theme.CategoryTagText
 import com.vivificavit.shortstack.ui.theme.CreditGreen
 import com.vivificavit.shortstack.ui.theme.DebitRed
-import com.vivificavit.shortstack.util.Money
+import com.vivificavit.shortstack.ui.components.formatMoney
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -172,7 +172,7 @@ fun BalanceHeaderCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = Money.format(headlineCents),
+                text = formatMoney(headlineCents),
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.ExtraBold,
                 color = balanceColor
@@ -189,7 +189,7 @@ fun BalanceHeaderCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = Money.format(ledger.balanceCents),
+                        text = formatMoney(ledger.balanceCents),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -223,7 +223,7 @@ fun BalanceHeaderCard(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = Money.format(ledger.savedCents),
+                        text = formatMoney(ledger.savedCents),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -303,9 +303,9 @@ fun TransactionRowCard(
     val isCredit = transaction.type == TransactionType.CREDIT
     val amountColor = if (isCredit) CreditGreen else DebitRed
     val formattedSignedAmount = if (isCredit) {
-        "+${Money.format(transaction.amountCents)}"
+        "+${formatMoney(transaction.amountCents)}"
     } else {
-        "-${Money.format(transaction.amountCents)}"
+        "-${formatMoney(transaction.amountCents)}"
     }
     val amount = @Composable {
         Text(

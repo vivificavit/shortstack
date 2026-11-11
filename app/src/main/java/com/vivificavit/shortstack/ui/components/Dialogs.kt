@@ -16,6 +16,10 @@ import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -32,6 +36,7 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.ui.icons.EntryIcon
 import com.vivificavit.shortstack.ui.icons.EntryIcons
+import com.vivificavit.shortstack.util.AppCurrency
 
 @Composable
 fun ManageCategoriesDialog(
@@ -366,6 +373,75 @@ fun RestoreBackupDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
+}
+
+@StringRes
+private fun currencyNameRes(currency: AppCurrency): Int = when (currency) {
+    AppCurrency.USD -> R.string.currency_usd
+    AppCurrency.CAD -> R.string.currency_cad
+    AppCurrency.GBP -> R.string.currency_gbp
+    AppCurrency.EUR -> R.string.currency_eur
+    AppCurrency.AUD -> R.string.currency_aud
+    AppCurrency.NZD -> R.string.currency_nzd
+}
+
+/**
+ * Picks the currency amounts are shown in. A pick applies right away, so the
+ * amounts behind the dialog show what it does before the dialog is closed.
+ */
+@Composable
+fun CurrencyDialog(
+    current: AppCurrency,
+    onPick: (AppCurrency) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.currency_title), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = stringResource(R.string.currency_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Column(modifier = Modifier.selectableGroup()) {
+                    AppCurrency.entries.forEach { currency ->
+                        // The whole row is the radio button, so it's an easy target and reads as one item.
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = currency == current,
+                                    role = Role.RadioButton,
+                                    onClick = { onPick(currency) }
+                                )
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = currency == current, onClick = null)
+                            Text(
+                                text = stringResource(
+                                    R.string.currency_option,
+                                    stringResource(currencyNameRes(currency)),
+                                    currency.symbol
+                                ),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_done))
             }
         }
     )

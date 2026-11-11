@@ -63,7 +63,7 @@ import com.vivificavit.shortstack.ui.icons.EntryIcons
 import com.vivificavit.shortstack.ui.theme.CreditGreen
 import com.vivificavit.shortstack.ui.viewmodel.GoalProgress
 import com.vivificavit.shortstack.ui.viewmodel.GoalsState
-import com.vivificavit.shortstack.util.Money
+import com.vivificavit.shortstack.ui.components.formatMoney
 
 /** Shows nothing until [goals] has loaded, so the empty state never flashes up. */
 @Composable
@@ -146,7 +146,7 @@ private fun PocketMoneyStrip(pocketCents: Long) {
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = Money.format(pocketCents),
+            text = formatMoney(pocketCents),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
@@ -229,8 +229,8 @@ private fun GoalCard(progress: GoalProgress, actions: GoalActions) {
                         Text(
                             text = stringResource(
                                 R.string.goal_progress_amount,
-                                Money.format(progress.savedCents),
-                                Money.format(goal.targetCents)
+                                formatMoney(progress.savedCents),
+                                formatMoney(goal.targetCents)
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -354,7 +354,7 @@ private fun DoneGoalCard(progress: GoalProgress, actions: GoalActions) {
                     )
                     Text(
                         text = progress.paidCents?.let {
-                            stringResource(R.string.goal_bought_for, Money.format(it), boughtOn)
+                            stringResource(R.string.goal_bought_for, formatMoney(it), boughtOn)
                         } ?: stringResource(R.string.goal_bought_on, boughtOn),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

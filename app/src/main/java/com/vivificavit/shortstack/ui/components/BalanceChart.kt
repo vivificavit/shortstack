@@ -44,7 +44,6 @@ import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.ui.theme.CreditGreen
 import com.vivificavit.shortstack.ui.theme.EntryButtonNavy
 import com.vivificavit.shortstack.util.BalancePoint
-import com.vivificavit.shortstack.util.Money
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
@@ -82,10 +81,10 @@ fun BalanceChart(
     val last = points.last()
     val description = stringResource(
         R.string.cd_balance_chart,
-        Money.format(first.balanceCents),
-        Money.format(last.balanceCents),
-        Money.format(first.savedCents),
-        Money.format(last.savedCents),
+        formatMoney(first.balanceCents),
+        formatMoney(last.balanceCents),
+        formatMoney(first.savedCents),
+        formatMoney(last.savedCents),
         first.day.format(ChartDate),
         last.day.format(ChartDate)
     )
@@ -148,7 +147,7 @@ private fun SeriesLabel(color: Color, name: String, cents: Long) {
             )
         }
         Text(
-            text = Money.format(cents),
+            text = formatMoney(cents),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
@@ -172,7 +171,8 @@ private fun BalancePlot(
     val scale = remember(points) { AxisScale.of(points) }
     val firstDay = points.first().day
     val spanDays = ChronoUnit.DAYS.between(firstDay, points.last().day).coerceAtLeast(1L)
-    val tickLabels = remember(scale) { scale.ticks.map { formatAxis(it) } }
+    val moneyFormat = LocalMoneyFormat.current
+    val tickLabels = remember(scale, moneyFormat) { scale.ticks.map(moneyFormat::formatShort) }
 
     // The plot starts after the widest axis label, so the labels never overlap it.
     val labelWidth = remember(tickLabels, axisStyle) {
@@ -267,7 +267,3 @@ private data class AxisScale(val min: Long, val max: Long, val ticks: List<Long>
         }
     }
 }
-
-/** "$50" for whole dollars, "$2.50" otherwise. */
-private fun formatAxis(cents: Long): String =
-    Money.format(cents).let { if (cents % 100L == 0L) it.removeSuffix(".00") else it }

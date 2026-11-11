@@ -91,9 +91,6 @@ interface GoalActions {
     fun delete(goal: Goal)
 }
 
-/** Amount fields accept digits with up to two decimal places. */
-private val AmountInput = Regex("^\\d*\\.?\\d{0,2}$")
-
 /** The goal's icon on a soft green circle; [muted] once it's been bought. */
 @Composable
 fun GoalIcon(icon: ImageVector, modifier: Modifier = Modifier, muted: Boolean = false) {
@@ -132,8 +129,9 @@ fun GoalEditDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, targetCents: Long, icon: String?, targetDay: Long?) -> Unit
 ) {
+    val moneyFormat = LocalMoneyFormat.current
     var nameInput by rememberSaveable { mutableStateOf(existing?.name ?: "") }
-    var targetInput by rememberSaveable { mutableStateOf(existing?.let { Money.toInput(it.targetCents) } ?: "") }
+    var targetInput by rememberSaveable { mutableStateOf(existing?.let { moneyFormat.toInput(it.targetCents) } ?: "") }
     var iconKey by rememberSaveable { mutableStateOf(existing?.icon) }
     var pickingIcon by rememberSaveable { mutableStateOf(false) }
     var targetDay by rememberSaveable { mutableStateOf(existing?.targetDay) }
@@ -184,13 +182,13 @@ fun GoalEditDialog(
                 OutlinedTextField(
                     value = targetInput,
                     onValueChange = { newValue ->
-                        if (newValue.isEmpty() || newValue.matches(AmountInput)) {
+                        if (Money.isAmountInput(newValue)) {
                             targetInput = newValue
                             inputError = null
                         }
                     },
                     label = { Text(stringResource(R.string.goal_target_label)) },
-                    placeholder = { Text(stringResource(R.string.entry_amount_hint)) },
+                    placeholder = { Text(moneyFormat.toInput(0L)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
@@ -233,7 +231,7 @@ fun GoalEditDialog(
                 }
                 inputError?.let { errorRes ->
                     Text(
-                        text = stringResource(errorRes, Money.format(1L), Money.format(Money.MAX_ENTRY_CENTS)),
+                        text = stringResource(errorRes, formatMoney(1L), formatMoney(Money.MAX_ENTRY_CENTS)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -320,6 +318,7 @@ fun MoveMoneyDialog(
     onDismiss: () -> Unit,
     onMove: (fromGoalId: Long?, toGoalId: Long?, amountCents: Long) -> Unit
 ) {
+    val moneyFormat = LocalMoneyFormat.current
     val pocketName = stringResource(R.string.goals_pocket_money_short)
     val places = listOf(MoneyPlace(null, pocketName, goals.pocketCents.coerceAtLeast(0L))) +
         goals.active.map { MoneyPlace(it.goal.id, it.goal.name, it.savedCents) }
@@ -333,7 +332,7 @@ fun MoveMoneyDialog(
     LaunchedEffect(Unit) { amountFocus.requestFocus() }
 
     val sameError = stringResource(R.string.move_same_error)
-    val amountError = stringResource(R.string.entry_amount_error, Money.format(1L), Money.format(available))
+    val amountError = stringResource(R.string.entry_amount_error, formatMoney(1L), formatMoney(available))
     fun tryMove() {
         val cents = Money.parseToCents(amountInput)
         when {
@@ -359,7 +358,7 @@ fun MoveMoneyDialog(
                         inputError = null
                     },
                     label = {
-                        Text(stringResource(R.string.move_place, place.name, Money.format(place.availableCents)))
+                        Text(stringResource(R.string.move_place, place.name, formatMoney(place.availableCents)))
                     }
                 )
             }
@@ -385,14 +384,14 @@ fun MoveMoneyDialog(
                     OutlinedTextField(
                         value = amountInput,
                         onValueChange = { newValue ->
-                            if (newValue.isEmpty() || newValue.matches(AmountInput)) {
+                            if (Money.isAmountInput(newValue)) {
                                 amountInput = newValue
                                 inputError = null
                             }
                         },
                         label = { Text(stringResource(R.string.entry_amount_label)) },
-                        placeholder = { Text(stringResource(R.string.entry_amount_hint)) },
-                        supportingText = { Text(stringResource(R.string.move_up_to, Money.format(available))) },
+                        placeholder = { Text(moneyFormat.toInput(0L)) },
+                        supportingText = { Text(stringResource(R.string.move_up_to, formatMoney(available))) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Decimal,
@@ -406,7 +405,7 @@ fun MoveMoneyDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     AssistChip(
                         onClick = {
-                            amountInput = Money.toInput(available)
+                            amountInput = moneyFormat.toInput(available)
                             inputError = null
                         },
                         label = { Text(stringResource(R.string.move_all)) }
@@ -474,7 +473,7 @@ fun GoalDetailSheet(
                 val boughtOn = goal.completedAt?.let(::formatShortDate).orEmpty()
                 Text(
                     text = progress.paidCents?.let {
-                        stringResource(R.string.goal_bought_for, Money.format(it), boughtOn)
+                        stringResource(R.string.goal_bought_for, formatMoney(it), boughtOn)
                     } ?: stringResource(R.string.goal_bought_on, boughtOn),
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -482,8 +481,8 @@ fun GoalDetailSheet(
                 Text(
                     text = stringResource(
                         R.string.goal_progress_saved,
-                        Money.format(progress.savedCents),
-                        Money.format(goal.targetCents)
+                        formatMoney(progress.savedCents),
+                        formatMoney(goal.targetCents)
                     ),
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -573,7 +572,7 @@ private fun GoalHistoryRow(item: GoalHistoryItem) {
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = (if (incoming) "+" else "-") + Money.format(kotlin.math.abs(item.amountCents)),
+            text = (if (incoming) "+" else "-") + formatMoney(kotlin.math.abs(item.amountCents)),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = if (incoming) CreditGreen else MaterialTheme.colorScheme.onSurfaceVariant
@@ -591,12 +590,12 @@ internal fun formatBuyByDate(targetDay: Long): String =
  */
 @Composable
 internal fun goalSaveMoreText(progress: GoalProgress): String {
-    val remaining = Money.format(progress.remainingCents)
+    val remaining = formatMoney(progress.remainingCents)
     val targetDay = progress.goal.targetDay ?: return stringResource(R.string.goal_save_more, remaining)
     val today = LocalToday.current.toEpochDay()
     return when (val pace = GoalMath.pace(progress.remainingCents, today, targetDay)) {
         is GoalMath.Pace.Weekly -> stringResource(
-            R.string.goal_save_more_weekly, remaining, formatBuyByDate(targetDay), Money.format(pace.cents)
+            R.string.goal_save_more_weekly, remaining, formatBuyByDate(targetDay), formatMoney(pace.cents)
         )
         GoalMath.Pace.ThisWeek -> stringResource(
             R.string.goal_save_more_by,

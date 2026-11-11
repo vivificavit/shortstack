@@ -5,7 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.data.local.AppDatabase
-import com.vivificavit.shortstack.data.local.SelectedKidStore
+import com.vivificavit.shortstack.data.local.SettingsStore
 import com.vivificavit.shortstack.data.model.Goal
 import com.vivificavit.shortstack.data.model.GoalSplit
 import com.vivificavit.shortstack.data.model.Transaction
@@ -13,6 +13,7 @@ import com.vivificavit.shortstack.data.model.TransactionType
 import com.vivificavit.shortstack.repository.TransactionRepository
 import com.vivificavit.shortstack.ui.viewmodel.TrackerViewModel
 import com.vivificavit.shortstack.ui.viewmodel.UiMessage
+import com.vivificavit.shortstack.util.AppCurrency
 import com.vivificavit.shortstack.util.DateRanges
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -33,15 +34,21 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.FileNotFoundException
+import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class TrackerViewModelTest {
-    private class FakeStore(initial: String? = null) : SelectedKidStore {
+    private class FakeStore(initial: String? = null) : SettingsStore {
         private val state = MutableStateFlow(initial)
         override val lastSelectedKid: Flow<String?> = state
         override suspend fun setLastSelectedKid(name: String) {
             state.value = name
+        }
+
+        override val currencyCode = MutableStateFlow<String?>(null)
+        override suspend fun setCurrencyCode(code: String) {
+            currencyCode.value = code
         }
     }
 
@@ -546,6 +553,27 @@ class TrackerViewModelTest {
         repository.deleteKidAndEntries("Sam")
         assertEquals(emptyList<Goal>(), repository.getGoalsForKid("Sam").first())
         assertEquals(emptyList<Any>(), repository.getGoalMovesForKid("Sam").first())
+    }
+
+    @Test
+    fun currencyStartsFromThePhonesRegionThenStaysAsChosen() = runBlocking {
+        val phoneLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.UK)
+            val store = FakeStore()
+            val vm = TrackerViewModel(repository, store)
+            assertEquals(AppCurrency.GBP, vm.currency.value)
+            // It's saved straight away, so moving the phone to another region doesn't change it.
+            store.currencyCode.awaitValue { it == "GBP" }
+            Locale.setDefault(Locale.US)
+            TrackerViewModel(repository, store).currency.awaitValue { it == AppCurrency.GBP }
+
+            vm.setCurrency(AppCurrency.EUR)
+            vm.currency.awaitValue { it == AppCurrency.EUR }
+            assertEquals("EUR", store.currencyCode.value)
+        } finally {
+            Locale.setDefault(phoneLocale)
+        }
     }
 
     @Test

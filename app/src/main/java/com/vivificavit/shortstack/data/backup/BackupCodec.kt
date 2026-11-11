@@ -254,7 +254,7 @@ object BackupCodec {
                 ?: tx.amount?.let(Money::dollarsToCents)
                 ?: throw IllegalArgumentException("$entry has no amount.")
             require(cents in 1..Money.MAX_ENTRY_CENTS) {
-                "$entry has an amount outside ${Money.format(1L)} to ${Money.format(Money.MAX_ENTRY_CENTS)}."
+                "$entry has an amount outside ${Money.toPlain(1L)} to ${Money.toPlain(Money.MAX_ENTRY_CENTS)}."
             }
             require(tx.kidName.isNotBlank()) { "$entry has no kid name." }
             require(tx.title.isNotBlank()) { "$entry has no note." }
@@ -276,7 +276,7 @@ object BackupCodec {
             require(goal.kidName.isNotBlank()) { "$label has no kid name." }
             require(goal.name.isNotBlank()) { "$label has no name." }
             require(goal.targetCents in 1..Money.MAX_ENTRY_CENTS) {
-                "$label costs outside ${Money.format(1L)} to ${Money.format(Money.MAX_ENTRY_CENTS)}."
+                "$label costs outside ${Money.toPlain(1L)} to ${Money.toPlain(Money.MAX_ENTRY_CENTS)}."
             }
             require(goal.createdAt in 0..MAX_TIMESTAMP && (goal.completedAt ?: 0L) in 0..MAX_TIMESTAMP) {
                 "$label has an invalid date."
@@ -312,7 +312,7 @@ object BackupCodec {
             require(entry.title.isNotBlank()) { "$label has no note." }
             require(entry.category.isNotBlank()) { "$label has no category." }
             require(entry.amountCents in 1..Money.MAX_ENTRY_CENTS) {
-                "$label has an amount outside ${Money.format(1L)} to ${Money.format(Money.MAX_ENTRY_CENTS)}."
+                "$label has an amount outside ${Money.toPlain(1L)} to ${Money.toPlain(Money.MAX_ENTRY_CENTS)}."
             }
             require(entry.startTimestamp in 0..MAX_TIMESTAMP) { "$label has an invalid date." }
             require(entry.occurrences in 0..MAX_OCCURRENCES) { "$label has an invalid count." }

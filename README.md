@@ -9,6 +9,7 @@ An Android app for parents to track their kids' allowance, spending and savings 
 - **Repeating entries**: weekly, every 2 weeks or monthly income and expenses, such as an allowance or a subscription. Due entries are added automatically, including ones missed while the app was closed, and can set aside a fixed amount for a goal each time.
 - **Trends**: a chart of the balance and the money saved for goals over time, plus income and expenses by category for a chosen date range.
 - **Backup and export**: export everything to a JSON backup file and restore it later, or export entries as a CSV spreadsheet.
+- **Currency**: US, Canadian, Australian or New Zealand dollars, British pounds or euros, chosen from the menu. A new install starts with the one for the phone's region. The choice changes the symbol only; amounts aren't converted. To offer another two-decimal currency, add it to `AppCurrency` in `util/Money.kt` with a name in `strings.xml`.
 
 ## Building
 
@@ -53,7 +54,7 @@ The backup file has its own format number in `BackupCodec.kt`, currently 4. Rais
 ```
 app/src/main/java/com/vivificavit/shortstack/
   data/model        Room entities: entries, kids, categories, goals, goal moves, repeating entries
-  data/local        AppDatabase, migrations, DAOs, selected-kid store
+  data/local        AppDatabase, migrations, DAOs, settings store (selected kid, currency)
   data/backup       JSON backup and restore
   data/export       CSV export
   repository        all database writes, including goal rebalancing
