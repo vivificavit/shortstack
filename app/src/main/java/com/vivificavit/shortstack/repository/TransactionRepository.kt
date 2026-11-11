@@ -148,9 +148,15 @@ class TransactionRepository(
         }
     }
 
-    suspend fun insertKid(name: String) {
-        withContext(Dispatchers.IO) {
-            transactionDao.insertKid(KidProfile(name = name.trim()))
+    /**
+     * Adds a kid, unless one already has that name in any capitalization.
+     * Returns the name as it's stored, which is the one to select.
+     */
+    suspend fun insertKid(name: String): String = withContext(Dispatchers.IO) {
+        val trimmed = name.trim()
+        database.withTransaction {
+            transactionDao.getAllKidsOnce().firstOrNull { it.name.equals(trimmed, ignoreCase = true) }?.name
+                ?: trimmed.also { transactionDao.insertKid(KidProfile(name = it)) }
         }
     }
 
@@ -167,11 +173,20 @@ class TransactionRepository(
         }
     }
 
-    suspend fun addCategory(name: String) {
+    /**
+     * Adds a category. Returns false, adding nothing, if there already is one
+     * with that name in any capitalization, since icons, charts and deleting
+     * all match categories that way.
+     */
+    suspend fun addCategory(name: String): Boolean {
         val trimmed = name.trim()
-        if (trimmed.isBlank()) return
-        withContext(Dispatchers.IO) {
-            transactionDao.insertCategory(CategoryEntity(name = trimmed))
+        if (trimmed.isBlank()) return false
+        return withContext(Dispatchers.IO) {
+            database.withTransaction {
+                val exists = transactionDao.getAllCategoryNamesOnce().any { it.equals(trimmed, ignoreCase = true) }
+                if (!exists) transactionDao.insertCategory(CategoryEntity(name = trimmed))
+                !exists
+            }
         }
     }
 

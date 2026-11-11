@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerializationException
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.LocalDate
@@ -295,17 +296,21 @@ class TrackerViewModel(
 
     init {
         // Cheer when a goal is reached, but not for ones already reached when a kid's goals load.
+        // Nor for goals that weren't there a moment ago: a restored backup or an undone delete
+        // brings back goals that may already be reached, under new or returning ids.
         viewModelScope.launch {
-            var before: Pair<String, Set<Long>>? = null
+            class Seen(val kidName: String, val goalIds: Set<Long>, val reached: Set<Long>)
+            var before: Seen? = null
             kidMoney.filterNotNull().collect { money ->
                 val reached = money.goals.active.filter { it.isReached }.map { it.goal.id }.toSet()
                 val previous = before
-                if (previous != null && previous.first == money.kidName) {
+                if (previous != null && previous.kidName == money.kidName) {
                     money.goals.active
-                        .filter { it.goal.id in reached && it.goal.id !in previous.second }
+                        .filter { it.goal.id in reached && it.goal.id in previous.goalIds && it.goal.id !in previous.reached }
                         .forEach { emitMessage(R.string.message_goal_reached, it.goal.name) }
                 }
-                before = money.kidName to reached
+                val goalIds = (money.goals.active + money.goals.done).map { it.goal.id }.toSet()
+                before = Seen(money.kidName, goalIds, reached)
             }
         }
     }
@@ -372,9 +377,10 @@ class TrackerViewModel(
         val trimmed = kidName.trim()
         if (trimmed.isBlank()) return
         viewModelScope.launch {
-            repository.insertKid(trimmed)
-            selectedKidStore.setLastSelectedKid(trimmed)
-            emitMessage(R.string.message_switched_kid, trimmed)
+            // "sam" when there's already a "Sam" switches to Sam rather than adding a second kid.
+            val stored = repository.insertKid(trimmed)
+            selectedKidStore.setLastSelectedKid(stored)
+            emitMessage(R.string.message_switched_kid, stored)
         }
     }
 
@@ -391,8 +397,11 @@ class TrackerViewModel(
         if (trimmed.isBlank()) return
         showCategory(trimmed)
         viewModelScope.launch {
-            repository.addCategory(trimmed)
-            emitMessage(R.string.message_category_added, trimmed)
+            if (repository.addCategory(trimmed)) {
+                emitMessage(R.string.message_category_added, trimmed)
+            } else {
+                emitMessage(R.string.message_category_exists, trimmed)
+            }
         }
     }
 
@@ -636,7 +645,13 @@ class TrackerViewModel(
                     addDueRecurring()
                 }
                 .onFailure { error ->
-                    emitMessage(R.string.message_restore_failed, error.localizedMessage.orEmpty())
+                    // A file that isn't JSON, or isn't laid out like a backup, fails in the parser,
+                    // whose own message ("Unexpected JSON token at offset 0…") means nothing to a parent.
+                    if (error is SerializationException) {
+                        emitMessage(R.string.message_restore_not_backup)
+                    } else {
+                        emitMessage(R.string.message_restore_failed, error.localizedMessage.orEmpty())
+                    }
                 }
         }
     }

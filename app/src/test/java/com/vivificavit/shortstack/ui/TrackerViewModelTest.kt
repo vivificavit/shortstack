@@ -255,6 +255,49 @@ class TrackerViewModelTest {
     }
 
     @Test
+    fun aFileThatIsntABackupSaysSoPlainlyAndChangesNothing() = runBlocking {
+        income(5_000)
+        val vm = TrackerViewModel(repository, FakeStore(initial = "Sam"))
+        vm.ledger.awaitValue { it?.transactions?.size == 1 }
+
+        // Not JSON at all, JSON that's the wrong shape, and somebody else's JSON file.
+        listOf("holiday photo", """{"transactions":5}""", """{"name":"another app","version":"1.0"}""").forEach { file ->
+            val message = async(start = CoroutineStart.UNDISPATCHED) {
+                vm.uiMessages.awaitValue {
+                    it.resId == R.string.message_restore_not_backup || it.resId == R.string.message_restore_failed ||
+                        it.pluralsRes == R.plurals.message_restore_succeeded
+                }
+            }
+            vm.importFromJson { file.byteInputStream() }
+            assertEquals(file, UiMessage(R.string.message_restore_not_backup), message.await())
+            assertEquals(file, listOf("Allowance"), repository.allTransactions.first().map { it.title })
+        }
+    }
+
+    @Test
+    fun namesThatDifferOnlyInCapitalsAreTheSameKidOrCategory() = runBlocking {
+        repository.seedDefaultsIfNeeded()
+        repository.insertKid("Sam")
+        repository.insertKid("Ada")
+        val store = FakeStore(initial = "Sam")
+        val vm = TrackerViewModel(repository, store)
+        vm.selectedKid.awaitValue { it == "Sam" }
+
+        // Adding "ada" switches to the Ada already there, under her own spelling.
+        vm.addKid(" ada")
+        vm.selectedKid.awaitValue { it == "Ada" }
+        assertEquals("Ada", store.lastSelectedKid.first())
+        assertEquals(listOf("Sam", "Ada"), repository.kidNames.first())
+
+        assertTrue(repository.addCategory("Snacks"))
+        assertEquals(false, repository.addCategory("SNACKS"))
+        assertEquals(false, repository.addCategory("toy"))
+        val categories = repository.categories.first()
+        assertEquals(listOf("Toy"), categories.filter { it.equals("toy", ignoreCase = true) })
+        assertEquals(listOf("Snacks"), categories.filter { it.equals("snacks", ignoreCase = true) })
+    }
+
+    @Test
     fun chosenIconsSurviveBackupAndRestore() = runBlocking {
         repository.addCategory("Snacks")
         repository.setCategoryIcon("snacks", "candy")
@@ -418,6 +461,36 @@ class TrackerViewModelTest {
         assertEquals(1_200L, money.moves.filter { it.goalId == restoredGoal.id }.sumOf { it.amountCents })
         val chores = money.transactions.single { it.title == "Chores" }
         assertEquals(listOf(200L), money.moves.filter { it.transactionId == chores.id }.map { it.amountCents })
+    }
+
+    @Test
+    fun restoringABackupDoesNotCheerForGoalsItAlreadyReached() = runBlocking {
+        income(5_000)
+        val gameId = goal("Game", targetCents = 2_000)
+        val bikeId = goal("Bike", targetCents = 1_000)
+        repository.moveMoney("Sam", null, gameId, 2_000)
+        val vm = TrackerViewModel(repository, FakeStore(initial = "Sam"))
+        vm.goals.awaitValue { it?.active?.size == 2 }
+
+        // Every cheer from here up to the one for Bike, which is reached after the restore.
+        val cheers = async(start = CoroutineStart.UNDISPATCHED) {
+            val seen = mutableListOf<String>()
+            vm.uiMessages.awaitValue { message ->
+                if (message.resId == R.string.message_goal_reached) seen += message.args
+                "Bike" in seen
+            }
+            seen
+        }
+        val file = java.io.ByteArrayOutputStream()
+        assertTrue(repository.exportToJson { file }.isSuccess)
+        vm.importFromJson { file.toByteArray().inputStream() }
+        // The restored goals have new ids.
+        val restoredBike = vm.goals.awaitValue { state ->
+            state?.active?.any { it.goal.name == "Bike" && it.goal.id != bikeId } == true
+        }!!.active.single { it.goal.name == "Bike" }.goal
+        vm.moveMoney(null, restoredBike.id, 1_000)
+
+        assertEquals(listOf("Bike"), cheers.await())
     }
 
     @Test

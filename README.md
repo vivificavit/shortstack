@@ -20,7 +20,7 @@ Requirements: Android Studio (current stable) with the Android SDK for API 37. G
 ./gradlew lintDebug              # lint
 ```
 
-CI (`.github/workflows/tests.yml`) runs the tests, lint and a debug build on every push and pull request.
+CI (`.github/workflows/tests.yml`) runs the tests, lint, a debug build and an unsigned release (R8) build on every push and pull request.
 
 ## Releasing to Google Play
 

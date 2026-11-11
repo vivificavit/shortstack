@@ -88,6 +88,7 @@ import com.vivificavit.shortstack.util.DateRanges
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -202,13 +203,14 @@ fun TrackerMainScreen(
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
-        uri?.let { targetUri -> viewModel.exportToJson { context.contentResolver.openOutputStream(targetUri) } }
+        // "wt" empties a file being saved over; plain "w" can leave the end of a longer old file behind.
+        uri?.let { targetUri -> viewModel.exportToJson { context.contentResolver.openOutputStream(targetUri, "wt") } }
     }
 
     val exportCsvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri: Uri? ->
-        uri?.let { targetUri -> viewModel.exportToCsv { context.contentResolver.openOutputStream(targetUri) } }
+        uri?.let { targetUri -> viewModel.exportToCsv { context.contentResolver.openOutputStream(targetUri, "wt") } }
     }
 
     val restoreBackupLauncher = rememberLauncherForActivityResult(
@@ -218,17 +220,25 @@ fun TrackerMainScreen(
     }
 
     LaunchedEffect(viewModel) {
+        // Messages show one at a time, in the order they came. An Undo can't wait its turn,
+        // though: by then the delete it offers to undo is old news. So it replaces whatever
+        // is showing or waiting, and stays up longer than a plain message.
+        val showing = mutableListOf<Job>()
         viewModel.uiMessages.collect { message ->
-            val result = snackbarHostState.showSnackbar(
-                message = if (message.pluralsRes != 0) {
-                    resources.getQuantityString(message.pluralsRes, message.quantity, *message.args.toTypedArray())
-                } else {
-                    resources.getString(message.resId, *message.args.toTypedArray())
-                },
-                actionLabel = message.onUndo?.let { resources.getString(R.string.action_undo) },
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) message.onUndo?.invoke()
+            if (message.onUndo != null) showing.forEach { it.cancel() }
+            showing.removeAll { !it.isActive }
+            showing += launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = if (message.pluralsRes != 0) {
+                        resources.getQuantityString(message.pluralsRes, message.quantity, *message.args.toTypedArray())
+                    } else {
+                        resources.getString(message.resId, *message.args.toTypedArray())
+                    },
+                    actionLabel = message.onUndo?.let { resources.getString(R.string.action_undo) },
+                    duration = if (message.onUndo != null) SnackbarDuration.Long else SnackbarDuration.Short
+                )
+                if (result == SnackbarResult.ActionPerformed) message.onUndo?.invoke()
+            }
         }
     }
 

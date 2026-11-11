@@ -11,6 +11,9 @@ build/
 *.log
 out/
 
+# Signed bundles and R8 mappings from Android Studio's "Generate Signed App Bundle".
+/app/release/
+
 # Release signing: never commit the key or its passwords.
 /keystore.properties
 *.jks

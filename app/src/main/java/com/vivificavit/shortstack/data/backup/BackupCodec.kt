@@ -11,9 +11,11 @@ import com.vivificavit.shortstack.data.model.Transaction
 import com.vivificavit.shortstack.data.model.TransactionType
 import com.vivificavit.shortstack.util.Money
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlin.math.abs
 
 @Serializable
@@ -140,6 +142,11 @@ object BackupCodec {
      */
     private const val MAX_MOVE_CENTS = 1_000_000_000_000L
 
+    /** Every key a [BackupFile] can have; a real backup has at least one of them. */
+    private val BackupKeys: Set<String> = BackupFile.serializer().descriptor.let { file ->
+        (0 until file.elementsCount).map(file::getElementName).toSet()
+    }
+
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
@@ -227,6 +234,12 @@ object BackupCodec {
                 )
             )
         } else {
+            // Unknown keys are skipped and every known one is optional, so without this any
+            // JSON object at all would read as an empty backup, and restoring it would
+            // replace everything with nothing.
+            if (element is JsonObject && BackupKeys.none { it in element }) {
+                throw SerializationException("The file has none of a backup's contents.")
+            }
             json.decodeFromJsonElement(BackupFile.serializer(), element)
         }
         require(file.formatVersion <= CURRENT_FORMAT_VERSION) {
