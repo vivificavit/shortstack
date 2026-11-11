@@ -56,6 +56,21 @@ data class DeletedGoal(
     val moves: List<GoalMove>
 )
 
+/** How renaming a kid or a category went. Only [RENAMED] changes anything. */
+enum class RenameResult {
+    RENAMED,
+
+    /** The new name is the one it already has. */
+    UNCHANGED,
+    BLANK,
+
+    /** Another kid or category has the new name, in some capitalization. */
+    NAME_TAKEN,
+
+    /** Nothing has the old name any more. */
+    NOT_FOUND
+}
+
 class TransactionRepository(
     private val database: AppDatabase
 ) {
@@ -177,6 +192,34 @@ class TransactionRepository(
         }
     }
 
+    /**
+     * Renames a kid everywhere their name is stored, together or not at all.
+     * Refused when another kid has [newName] in any capitalization; changing
+     * only the capitalization of this kid's own name is fine.
+     */
+    suspend fun renameKid(oldName: String, newName: String): RenameResult {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return RenameResult.BLANK
+        if (trimmed == oldName) return RenameResult.UNCHANGED
+        return withContext(Dispatchers.IO) {
+            database.withTransaction {
+                val kids = transactionDao.getAllKidsOnce().map { it.name }
+                when {
+                    oldName !in kids -> RenameResult.NOT_FOUND
+                    kids.any { it != oldName && it.equals(trimmed, ignoreCase = true) } -> RenameResult.NAME_TAKEN
+                    else -> {
+                        transactionDao.renameKid(oldName, trimmed)
+                        transactionDao.renameKidInTransactions(oldName, trimmed)
+                        goalDao.renameKidInGoals(oldName, trimmed)
+                        goalDao.renameKidInMoves(oldName, trimmed)
+                        recurringDao.renameKidInRecurring(oldName, trimmed)
+                        RenameResult.RENAMED
+                    }
+                }
+            }
+        }
+    }
+
     /** Permanently deletes a kid with all of their entries and goals, together or not at all. */
     suspend fun deleteKidAndEntries(name: String) {
         withContext(Dispatchers.IO) {
@@ -203,6 +246,43 @@ class TransactionRepository(
                 val exists = transactionDao.getAllCategoryNamesOnce().any { it.equals(trimmed, ignoreCase = true) }
                 if (!exists) transactionDao.insertCategory(CategoryEntity(name = trimmed))
                 !exists
+            }
+        }
+    }
+
+    /**
+     * Renames a category, on the entries and repeating entries that use it too,
+     * together or not at all. It keeps its icon. Like everything else about
+     * categories, [oldName] matches in any capitalization, and the rename is
+     * refused when a different category has [newName] in any capitalization.
+     */
+    suspend fun renameCategory(oldName: String, newName: String): RenameResult {
+        val old = oldName.trim()
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return RenameResult.BLANK
+        return withContext(Dispatchers.IO) {
+            database.withTransaction {
+                val (matching, others) = transactionDao.getAllCategoriesOnce()
+                    .partition { it.name.equals(old, ignoreCase = true) }
+                when {
+                    matching.isEmpty() -> RenameResult.NOT_FOUND
+                    matching.all { it.name == trimmed } -> RenameResult.UNCHANGED
+                    others.any { it.name.equals(trimmed, ignoreCase = true) } -> RenameResult.NAME_TAKEN
+                    else -> {
+                        // Normally one row. Entries saved by older versions could leave the same
+                        // category under two spellings ("Toy" and "toy"); those become one, since
+                        // two rows can't share the new name.
+                        val kept = matching.firstOrNull { it.name == old } ?: matching.first()
+                        val icon = kept.icon ?: matching.firstNotNullOfOrNull { it.icon }
+                        transactionDao.deleteCategories(matching.filter { it.id != kept.id }.map { it.id })
+                        transactionDao.renameCategory(kept.id, trimmed, icon)
+                        (matching.map { it.name } + old).distinct().forEach { spelling ->
+                            transactionDao.renameCategoryInTransactions(spelling, trimmed)
+                            recurringDao.renameCategoryInRecurring(spelling, trimmed)
+                        }
+                        RenameResult.RENAMED
+                    }
+                }
             }
         }
     }

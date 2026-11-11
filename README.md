@@ -4,7 +4,7 @@ An Android app for parents to track their kids' allowance, spending and savings 
 
 ## What it does
 
-- **Ledger**: one balance per kid, with income and expense entries sorted into categories with icons. Deleting an entry can be undone.
+- **Ledger**: one balance per kid, with income and expense entries sorted into categories with icons. Deleting an entry can be undone. Kids and categories can be renamed, and keep their entries, goals and repeating entries.
 - **Goals**: savings goals, each with a target and an optional buy-by date. Money set aside for goals stays in the total balance but no longer counts as pocket money. Income can send part of an entry to a goal. Spending more than the pocket money takes the rest from a goal you pick. Goals can be marked as bought.
 - **Repeating entries**: weekly, every 2 weeks or monthly income and expenses, such as an allowance or a subscription. Due entries are added automatically, including ones missed while the app was closed, and can set aside a fixed amount for a goal each time.
 - **Trends**: a chart of the balance and the money saved for goals over time, plus income and expenses by category for a chosen date range.

@@ -72,6 +72,12 @@ interface TransactionDao {
     @Query("DELETE FROM kids WHERE name = :name")
     suspend fun deleteKid(name: String): Int
 
+    @Query("UPDATE kids SET name = :newName WHERE name = :oldName")
+    suspend fun renameKid(oldName: String, newName: String): Int
+
+    @Query("UPDATE transactions SET kidName = :newName WHERE kidName = :oldName")
+    suspend fun renameKidInTransactions(oldName: String, newName: String)
+
     @Query("DELETE FROM transactions WHERE kidName = :kidName")
     suspend fun deleteTransactionsForKid(kidName: String): Int
 
@@ -92,6 +98,15 @@ interface TransactionDao {
 
     @Query("UPDATE categories SET icon = :icon WHERE LOWER(name) = LOWER(:name)")
     suspend fun setCategoryIcon(name: String, icon: String?)
+
+    @Query("UPDATE categories SET name = :newName, icon = :icon WHERE id = :id")
+    suspend fun renameCategory(id: Long, newName: String, icon: String?)
+
+    @Query("DELETE FROM categories WHERE id IN (:ids)")
+    suspend fun deleteCategories(ids: List<Long>)
+
+    @Query("UPDATE transactions SET category = :newName WHERE LOWER(category) = LOWER(:oldName)")
+    suspend fun renameCategoryInTransactions(oldName: String, newName: String)
 
     @Query(
         """

@@ -60,6 +60,9 @@
     <string name="edit_kids_title">Edit kids</string>
     <string name="kid_has_entries">Has entries</string>
     <string name="kid_no_entries">No entries</string>
+    <string name="cd_rename_item">Rename %1$s</string>
+    <string name="rename_title">Rename %1$s</string>
+    <string name="rename_kid_name_taken">There\'s already a kid called %1$s.</string>
     <string name="remove_kid_title">Remove %1$s?</string>
     <string name="remove_kid_body">Removing %1$s will remove all entries associated with them and cannot be undone. Do you really want to do this?</string>
 
@@ -78,6 +81,8 @@
     <string name="category_icon_hint">Automatic picks an icon from each entry\'s note, or else from the category name. Choosing an icon uses it for every entry in this category.</string>
     <string name="category_in_use">In use</string>
     <string name="category_unused">Unused</string>
+    <string name="rename_category_label">Category name</string>
+    <string name="rename_category_name_taken">\"%1$s\" is already a category.</string>
 
     <!-- Ledger tab -->
     <string name="balance_title">%1$s\'s balance</string>
@@ -218,9 +223,12 @@
     <!-- Snackbar messages -->
     <string name="message_switched_kid">Switched to %1$s\'s ledger</string>
     <string name="message_kid_removed">Removed %1$s</string>
+    <string name="message_kid_renamed">Renamed %1$s to %2$s</string>
+    <string name="message_kid_name_taken">There\'s already a kid called %1$s</string>
     <string name="message_category_added">Added \"%1$s\" to categories</string>
     <string name="message_category_exists">\"%1$s\" is already a category</string>
     <string name="message_category_removed">Removed unused category \"%1$s\"</string>
+    <string name="message_category_renamed">Renamed \"%1$s\" to \"%2$s\"</string>
     <string name="message_category_in_use">Can\'t delete \"%1$s\" because it\'s used in entries</string>
     <string name="message_entry_deleted">Deleted \"%1$s\"</string>
     <string name="message_goal_added">Added goal \"%1$s\"</string>

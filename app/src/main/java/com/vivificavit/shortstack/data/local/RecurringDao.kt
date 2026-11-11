@@ -38,4 +38,10 @@ interface RecurringDao {
 
     @Query("DELETE FROM recurring_entries")
     suspend fun deleteAllRecurring()
+
+    @Query("UPDATE recurring_entries SET kidName = :newName WHERE kidName = :oldName")
+    suspend fun renameKidInRecurring(oldName: String, newName: String)
+
+    @Query("UPDATE recurring_entries SET category = :newName WHERE LOWER(category) = LOWER(:oldName)")
+    suspend fun renameCategoryInRecurring(oldName: String, newName: String)
 }

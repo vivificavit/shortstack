@@ -8,8 +8,11 @@ import com.vivificavit.shortstack.data.local.AppDatabase
 import com.vivificavit.shortstack.data.local.SettingsStore
 import com.vivificavit.shortstack.data.model.Goal
 import com.vivificavit.shortstack.data.model.GoalSplit
+import com.vivificavit.shortstack.data.model.Frequency
+import com.vivificavit.shortstack.data.model.RecurringEntry
 import com.vivificavit.shortstack.data.model.Transaction
 import com.vivificavit.shortstack.data.model.TransactionType
+import com.vivificavit.shortstack.repository.RenameResult
 import com.vivificavit.shortstack.repository.TransactionRepository
 import com.vivificavit.shortstack.ui.viewmodel.TrackerViewModel
 import com.vivificavit.shortstack.ui.viewmodel.UiMessage
@@ -361,6 +364,198 @@ class TrackerViewModelTest {
 
         assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }).isSuccess)
         assertEquals(mapOf("snacks" to "candy"), repository.categoryIcons.first())
+    }
+
+    /** Weekly pocket money that starts next week, so it has added no entries yet. */
+    private suspend fun repeating(kidName: String, category: String) =
+        repository.addRecurring(
+            RecurringEntry(
+                kidName = kidName,
+                title = "Pocket money",
+                amountCents = 300,
+                type = TransactionType.CREDIT,
+                category = category,
+                frequency = Frequency.WEEKLY,
+                startTimestamp = System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000L
+            )
+        )
+
+    @Test
+    fun renamingAKidKeepsEverythingOfTheirsAndStaysOnThem() = runBlocking {
+        // Ada comes first, so she's who the app would fall back to if it lost track of Sam.
+        repository.insertTransaction(
+            Transaction(kidName = "Ada", title = "Gift", amountCents = 700, type = TransactionType.CREDIT)
+        )
+        income(5_000)
+        val gameId = goal("Game")
+        repository.moveMoney("Sam", null, gameId, 2_000)
+        repeating("Sam", "Allowance")
+        val store = FakeStore(initial = "Sam")
+        val vm = TrackerViewModel(repository, store)
+        vm.ledger.awaitValue { it?.savedCents == 2_000L }
+        // Every kid the app shows from here until it shows Samuel.
+        val selections = async(Dispatchers.Unconfined) {
+            val seen = mutableListOf<String?>()
+            vm.selectedKid.awaitValue { kid ->
+                seen += kid
+                kid == "Samuel"
+            }
+            seen
+        }
+
+        val message = async(start = CoroutineStart.UNDISPATCHED) {
+            vm.uiMessages.awaitValue { true }
+        }
+        vm.renameKid("Sam", " Samuel ")
+        assertEquals(UiMessage(R.string.message_kid_renamed, listOf("Sam", "Samuel")), message.await())
+
+        vm.selectedKid.awaitValue { it == "Samuel" }
+        store.lastSelectedKid.awaitValue { it == "Samuel" }
+        assertEquals(listOf("Sam", "Samuel"), selections.await())
+        assertEquals(listOf("Ada", "Samuel"), repository.kidNames.first())
+
+        val ledger = vm.ledger.awaitValue { state -> state?.transactions?.map { it.kidName } == listOf("Samuel") }!!
+        assertEquals(5_000L, ledger.balanceCents)
+        assertEquals(2_000L, ledger.savedCents)
+        val game = vm.goals.awaitValue { it?.active?.singleOrNull()?.goal?.kidName == "Samuel" }!!.active.single()
+        assertEquals(gameId, game.goal.id)
+        assertEquals(2_000L, game.savedCents)
+        assertEquals(listOf("Pocket money"), vm.recurring.awaitValue { it.isNotEmpty() }.map { it.title })
+
+        // Nothing is left under the old name, and Ada's entry is still hers.
+        val old = repository.getMoneyForKid("Sam").first()
+        assertEquals(emptyList<Any>(), old.transactions + old.goals + old.moves)
+        assertEquals(emptyList<RecurringEntry>(), repository.getRecurringForKid("Sam").first())
+        assertEquals(listOf("Gift"), repository.getTransactionsForKid("Ada").first().map { it.title })
+    }
+
+    @Test
+    fun renamingAKidToAnotherKidsNameIsRefusedAndChangesNothing() = runBlocking {
+        income(5_000)
+        repository.insertTransaction(
+            Transaction(kidName = "Ada", title = "Gift", amountCents = 700, type = TransactionType.CREDIT)
+        )
+        val vm = TrackerViewModel(repository, FakeStore(initial = "Sam"))
+        vm.selectedKid.awaitValue { it == "Sam" }
+
+        val message = async(start = CoroutineStart.UNDISPATCHED) {
+            vm.uiMessages.awaitValue { true }
+        }
+        vm.renameKid("Sam", "ADA")
+        assertEquals(UiMessage(R.string.message_kid_name_taken, listOf("ADA")), message.await())
+        assertEquals(RenameResult.BLANK, repository.renameKid("Sam", "  "))
+        assertEquals(RenameResult.NOT_FOUND, repository.renameKid("Ghost", "Max"))
+
+        assertEquals(listOf("Sam", "Ada"), repository.kidNames.first())
+        assertEquals("Sam", vm.selectedKid.value)
+        assertEquals(
+            mapOf("Allowance" to "Sam", "Gift" to "Ada"),
+            repository.allTransactions.first().associate { it.title to it.kidName }
+        )
+    }
+
+    @Test
+    fun aKidsNameCanChangeCapitalsOnly() = runBlocking {
+        repository.insertTransaction(
+            Transaction(kidName = "sam", title = "Allowance", amountCents = 500, type = TransactionType.CREDIT)
+        )
+        val store = FakeStore(initial = "sam")
+        val vm = TrackerViewModel(repository, store)
+        vm.selectedKid.awaitValue { it == "sam" }
+
+        vm.renameKid("sam", "Sam")
+        vm.selectedKid.awaitValue { it == "Sam" }
+        store.lastSelectedKid.awaitValue { it == "Sam" }
+        assertEquals(listOf("Sam"), repository.kidNames.first())
+        assertEquals(listOf("Sam"), repository.allTransactions.first().map { it.kidName })
+    }
+
+    @Test
+    fun renamingACategoryKeepsItsEntriesIconAndRepeatingEntries() = runBlocking {
+        repository.seedDefaultsIfNeeded()
+        repository.addCategory("Snacks")
+        repository.setCategoryIcon("Snacks", "candy")
+        repository.insertTransaction(
+            Transaction(kidName = "Sam", title = "Chips", amountCents = 250, type = TransactionType.DEBIT, category = "Snacks")
+        )
+        repeating("Sam", "Snacks")
+        val vm = TrackerViewModel(repository, FakeStore(initial = "Sam"))
+        vm.categories.awaitValue { "Snacks" in it }
+        vm.toggleCategorySelection("Snacks")
+
+        val message = async(start = CoroutineStart.UNDISPATCHED) {
+            vm.uiMessages.awaitValue { true }
+        }
+        // The old name matches in any capitalization, like everything else about categories.
+        vm.renameCategory("snacks", " Treats ")
+        assertEquals(UiMessage(R.string.message_category_renamed, listOf("snacks", "Treats")), message.await())
+
+        val categories = vm.categories.awaitValue { "Treats" in it }
+        assertEquals(false, "Snacks" in categories)
+        assertEquals(mapOf("treats" to "candy"), repository.categoryIcons.first())
+        assertEquals(listOf("Treats"), repository.allTransactions.first().map { it.category })
+        assertEquals(listOf("Treats"), repository.getRecurringForKid("Sam").first().map { it.category })
+        // It was hidden from the charts, and still is.
+        assertEquals(setOf("treats"), vm.hiddenCategories.value)
+
+        // Another category's name is refused, in any capitalization; its own in new capitals is fine.
+        val refused = async(start = CoroutineStart.UNDISPATCHED) {
+            vm.uiMessages.awaitValue { true }
+        }
+        vm.renameCategory("Treats", "toy")
+        assertEquals(UiMessage(R.string.message_category_exists, listOf("toy")), refused.await())
+        assertEquals(RenameResult.BLANK, repository.renameCategory("Treats", " "))
+        assertEquals(listOf("Treats"), repository.allTransactions.first().map { it.category })
+        assertEquals(RenameResult.RENAMED, repository.renameCategory("Treats", "TREATS"))
+        assertEquals(listOf("TREATS"), repository.allTransactions.first().map { it.category })
+        assertEquals(mapOf("treats" to "candy"), repository.categoryIcons.first())
+    }
+
+    @Test
+    fun renamingACategoryStoredUnderTwoSpellingsLeavesOne() = runBlocking {
+        repository.addCategory("Snacks")
+        repository.setCategoryIcon("Snacks", "candy")
+        // Saving an entry adds its category as written, so this leaves "Snacks" and "snacks".
+        repository.insertTransaction(
+            Transaction(kidName = "Sam", title = "Chips", amountCents = 250, type = TransactionType.DEBIT, category = "snacks")
+        )
+        assertEquals(listOf("Snacks", "snacks"), repository.categories.first())
+
+        assertEquals(RenameResult.RENAMED, repository.renameCategory("snacks", "Treats"))
+        assertEquals(listOf("Treats"), repository.categories.first())
+        assertEquals(mapOf("treats" to "candy"), repository.categoryIcons.first())
+        assertEquals(listOf("Treats"), repository.allTransactions.first().map { it.category })
+    }
+
+    @Test
+    fun aBackupMadeAfterRenamingRestoresUnderTheNewNames() = runBlocking {
+        income(5_000)
+        val gameId = goal("Game")
+        repository.moveMoney("Sam", null, gameId, 2_000)
+        repository.addCategory("Snacks")
+        repository.setCategoryIcon("Snacks", "candy")
+        repository.insertTransaction(
+            Transaction(kidName = "Sam", title = "Chips", amountCents = 250, type = TransactionType.DEBIT, category = "Snacks")
+        )
+        repeating("Sam", "Snacks")
+        assertEquals(RenameResult.RENAMED, repository.renameKid("Sam", "Samuel"))
+        assertEquals(RenameResult.RENAMED, repository.renameCategory("Snacks", "Treats"))
+
+        val file = java.io.ByteArrayOutputStream()
+        assertTrue(repository.exportToJson { file }.isSuccess)
+        repository.deleteKidAndEntries("Samuel")
+        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }).isSuccess)
+
+        assertEquals(listOf("Samuel"), repository.kidNames.first())
+        val money = repository.getMoneyForKid("Samuel").first()
+        assertEquals(setOf("Allowance", "Chips"), money.transactions.map { it.title }.toSet())
+        assertEquals("Treats", money.transactions.single { it.title == "Chips" }.category)
+        assertEquals(2_000L, money.moves.filter { it.goalId == money.goals.single().id }.sumOf { it.amountCents })
+        val repeats = repository.getRecurringForKid("Samuel").first().single()
+        assertEquals("Treats", repeats.category)
+        val categories = repository.categories.first()
+        assertEquals(true to false, ("Treats" in categories) to ("Snacks" in categories))
+        assertEquals(mapOf("treats" to "candy"), repository.categoryIcons.first())
     }
 
     private suspend fun income(cents: Long, title: String = "Allowance") =
