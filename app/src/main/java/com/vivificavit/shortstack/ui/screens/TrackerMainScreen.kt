@@ -72,12 +72,14 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.data.model.Goal
 import com.vivificavit.shortstack.ui.components.AddKidDialog
+import com.vivificavit.shortstack.ui.components.CurrencyDialog
 import com.vivificavit.shortstack.ui.components.EntryBottomSheet
 import com.vivificavit.shortstack.ui.components.EntryMoney
 import com.vivificavit.shortstack.ui.components.EditKidsDialog
 import com.vivificavit.shortstack.ui.components.GoalActions
 import com.vivificavit.shortstack.ui.components.GoalDetailSheet
 import com.vivificavit.shortstack.ui.components.GoalEditDialog
+import com.vivificavit.shortstack.ui.components.LocalMoneyFormat
 import com.vivificavit.shortstack.ui.components.ManageCategoriesDialog
 import com.vivificavit.shortstack.ui.components.MoveMoneyDialog
 import com.vivificavit.shortstack.ui.components.RepeatingEntriesDialog
@@ -147,6 +149,7 @@ fun TrackerMainScreen(
     var showEditKidsDialog by rememberSaveable { mutableStateOf(false) }
     var showManageCategoriesDialog by rememberSaveable { mutableStateOf(false) }
     var showRecurringDialog by rememberSaveable { mutableStateOf(false) }
+    var showCurrencyDialog by rememberSaveable { mutableStateOf(false) }
     var showDateRangeDialog by rememberSaveable { mutableStateOf(false) }
     // The repeating entry open for editing in the entry sheet.
     var editingRecurringId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -388,6 +391,13 @@ fun TrackerMainScreen(
                                     }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_currency)) },
+                                onClick = {
+                                    overflowExpanded = false
+                                    showCurrencyDialog = true
+                                }
+                            )
                         }
                     }
                 )
@@ -551,6 +561,14 @@ fun TrackerMainScreen(
                 restoreBackupLauncher.launch(arrayOf("application/json", "*/*"))
             },
             onDismiss = { showRestoreConfirm = false }
+        )
+    }
+
+    if (showCurrencyDialog) {
+        CurrencyDialog(
+            current = LocalMoneyFormat.current.currency,
+            onPick = viewModel::setCurrency,
+            onDismiss = { showCurrencyDialog = false }
         )
     }
 

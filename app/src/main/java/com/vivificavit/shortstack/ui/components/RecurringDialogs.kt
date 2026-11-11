@@ -26,7 +26,6 @@ import com.vivificavit.shortstack.data.model.RecurringEntry
 import com.vivificavit.shortstack.data.model.TransactionType
 import com.vivificavit.shortstack.ui.theme.CreditGreen
 import com.vivificavit.shortstack.ui.theme.DebitRed
-import com.vivificavit.shortstack.util.Money
 import com.vivificavit.shortstack.util.RecurringMath
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -87,7 +86,7 @@ private fun RecurringRow(
     onStop: () -> Unit
 ) {
     val isCredit = entry.type == TransactionType.CREDIT
-    val amount = (if (isCredit) "+" else "-") + Money.format(entry.amountCents)
+    val amount = (if (isCredit) "+" else "-") + formatMoney(entry.amountCents)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -125,7 +124,7 @@ private fun RecurringRow(
             )
             if (goalName != null && entry.goalCents != null) {
                 Text(
-                    text = stringResource(R.string.recurring_goal, Money.format(entry.goalCents), goalName),
+                    text = stringResource(R.string.recurring_goal, formatMoney(entry.goalCents), goalName),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

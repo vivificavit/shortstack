@@ -13,6 +13,19 @@
     <string name="menu_restore_backup">Restore backup…</string>
     <string name="menu_manage_categories">Manage categories</string>
     <string name="menu_recurring">Repeating entries</string>
+    <string name="menu_currency">Currency</string>
+
+    <!-- Currency picker -->
+    <string name="currency_title">Currency</string>
+    <string name="currency_note">This changes the symbol shown with every amount. Amounts aren\'t converted.</string>
+    <!-- A currency and its symbol, such as "British pound (£)" -->
+    <string name="currency_option">%1$s (%2$s)</string>
+    <string name="currency_usd">US dollar</string>
+    <string name="currency_cad">Canadian dollar</string>
+    <string name="currency_gbp">British pound</string>
+    <string name="currency_eur">Euro</string>
+    <string name="currency_aud">Australian dollar</string>
+    <string name="currency_nzd">New Zealand dollar</string>
     <string name="tab_ledger">Ledger</string>
     <string name="tab_goals">Goals</string>
     <string name="tab_trends">Trends</string>
@@ -166,7 +179,6 @@
     <string name="entry_type_income">Income</string>
     <string name="entry_type_expense">Expense</string>
     <string name="entry_amount_label">Amount ($)</string>
-    <string name="entry_amount_hint">0.00</string>
     <string name="entry_note_label">Description</string>
     <string name="entry_note_hint_income">Weekly allowance, Birthday gift, Lawn mowing…</string>
     <string name="entry_note_hint_expense">Video game, Lego set, Book…</string>

@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.data.local.CategorySum
-import com.vivificavit.shortstack.data.local.SelectedKidStore
+import com.vivificavit.shortstack.data.local.SettingsStore
 import com.vivificavit.shortstack.data.model.DefaultCategories
 import com.vivificavit.shortstack.data.model.Frequency
 import com.vivificavit.shortstack.data.model.Goal
@@ -17,6 +17,7 @@ import com.vivificavit.shortstack.data.model.Transaction
 import com.vivificavit.shortstack.data.model.TransactionType
 import com.vivificavit.shortstack.repository.KidMoneySnapshot
 import com.vivificavit.shortstack.repository.TransactionRepository
+import com.vivificavit.shortstack.util.AppCurrency
 import com.vivificavit.shortstack.util.BalanceHistory
 import com.vivificavit.shortstack.util.BalancePoint
 import com.vivificavit.shortstack.util.DateRanges
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -43,23 +45,51 @@ import java.io.OutputStream
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.Locale
 
 class TrackerViewModel(
     private val repository: TransactionRepository,
-    private val selectedKidStore: SelectedKidStore
+    private val settings: SettingsStore
 ) : ViewModel() {
 
     /** Wraps the stored choice so "not loaded yet" (null) differs from "nothing stored". */
     private data class PreferredKid(val name: String?)
 
     /** The kid the user last picked (may be stale if that kid was removed); null until loaded. */
-    private val preferredKid: StateFlow<PreferredKid?> = selectedKidStore.lastSelectedKid
+    private val preferredKid: StateFlow<PreferredKid?> = settings.lastSelectedKid
         .map { PreferredKid(it) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
             initialValue = null
         )
+
+    /**
+     * The currency amounts are shown in. A new install starts with the one for
+     * the phone's region, when the app offers it, and keeps it from then on.
+     */
+    val currency: StateFlow<AppCurrency> = settings.currencyCode
+        .map { AppCurrency.fromCode(it) ?: AppCurrency.forLocale(Locale.getDefault()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AppCurrency.forLocale(Locale.getDefault())
+        )
+
+    init {
+        // Save the starting currency, so changing the phone's region later doesn't
+        // quietly turn a ledger kept in dollars into pounds.
+        viewModelScope.launch {
+            if (AppCurrency.fromCode(settings.currencyCode.first()) == null) {
+                settings.setCurrencyCode(AppCurrency.forLocale(Locale.getDefault()).name)
+            }
+        }
+    }
+
+    /** Changes the symbol amounts are shown with; nothing is converted. */
+    fun setCurrency(currency: AppCurrency) {
+        viewModelScope.launch { settings.setCurrencyCode(currency.name) }
+    }
 
     /** Null until the database has loaded the kid list. */
     private val loadedKids: StateFlow<List<String>?> = repository.kidNames
@@ -370,7 +400,7 @@ class TrackerViewModel(
     fun selectKid(kidName: String) {
         val trimmed = kidName.trim()
         if (trimmed.isBlank()) return
-        viewModelScope.launch { selectedKidStore.setLastSelectedKid(trimmed) }
+        viewModelScope.launch { settings.setLastSelectedKid(trimmed) }
     }
 
     fun addKid(kidName: String) {
@@ -379,7 +409,7 @@ class TrackerViewModel(
         viewModelScope.launch {
             // "sam" when there's already a "Sam" switches to Sam rather than adding a second kid.
             val stored = repository.insertKid(trimmed)
-            selectedKidStore.setLastSelectedKid(stored)
+            settings.setLastSelectedKid(stored)
             emitMessage(R.string.message_switched_kid, stored)
         }
     }
@@ -658,12 +688,12 @@ class TrackerViewModel(
 
     class Factory(
         private val repository: TransactionRepository,
-        private val selectedKidStore: SelectedKidStore
+        private val settings: SettingsStore
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(TrackerViewModel::class.java)) {
-                return TrackerViewModel(repository, selectedKidStore) as T
+                return TrackerViewModel(repository, settings) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }

@@ -28,7 +28,7 @@ object CsvExport {
                     text(tx.category),
                     if (isIncome) "Income" else "Expense",
                     // Signed, so a SUM of the column gives the balance.
-                    Money.toInput(if (isIncome) tx.amountCents else -tx.amountCents)
+                    Money.toPlain(if (isIncome) tx.amountCents else -tx.amountCents)
                 )
             }
         // The byte order mark tells Excel the file is UTF-8, so names like "Zoë" survive.

@@ -46,7 +46,6 @@ import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.data.local.CategorySum
 import com.vivificavit.shortstack.ui.theme.CategoryPalette
 import com.vivificavit.shortstack.ui.theme.OtherCategoryColor
-import com.vivificavit.shortstack.util.Money
 
 /**
  * Gives each category a steady color from its place in [allCategories], so it
@@ -100,16 +99,17 @@ private fun StackedRow(
     barHeight: Dp
 ) {
     val resources = LocalResources.current
+    val moneyFormat = LocalMoneyFormat.current
     val parts = bar.parts.filter { it.totalCents > 0L }
     val total = parts.sumOf { it.totalCents }
     val description = if (parts.isEmpty()) {
-        stringResource(R.string.cd_stacked_bar, bar.label, Money.format(total))
+        stringResource(R.string.cd_stacked_bar, bar.label, formatMoney(total))
     } else {
         stringResource(
             R.string.cd_stacked_bar_parts,
             bar.label,
-            Money.format(total),
-            parts.joinToString { resources.getString(R.string.cd_stacked_bar_part, it.category, Money.format(it.totalCents)) }
+            formatMoney(total),
+            parts.joinToString { resources.getString(R.string.cd_stacked_bar_part, it.category, moneyFormat.format(it.totalCents)) }
         )
     }
 
@@ -137,7 +137,7 @@ private fun StackedRow(
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = Money.format(total),
+                text = formatMoney(total),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
