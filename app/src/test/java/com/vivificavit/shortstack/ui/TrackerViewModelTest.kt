@@ -165,6 +165,36 @@ class TrackerViewModelTest {
     }
 
     @Test
+    fun kidsAndCategoriesInUseAndNotesFollowTheEntries() = runBlocking {
+        repository.insertKid("Ada")
+        repository.addCategory("Unused")
+        listOf("Chips" to 1L, "Gum" to 2L).forEach { (title, timestamp) ->
+            repository.insertTransaction(
+                Transaction(
+                    kidName = "Sam",
+                    title = title,
+                    amountCents = 250,
+                    type = TransactionType.DEBIT,
+                    category = "Snacks",
+                    timestamp = timestamp
+                )
+            )
+        }
+        val vm = TrackerViewModel(repository, FakeStore(initial = "Sam"))
+
+        assertEquals(setOf("Sam"), vm.kidsWithEntries.awaitValue { it.isNotEmpty() })
+        assertEquals(setOf("snacks"), vm.usedCategories.awaitValue { it.isNotEmpty() })
+        // Newest first, under the lower-cased category.
+        assertEquals(mapOf("snacks" to listOf("Gum", "Chips")), vm.notesByCategory.awaitValue { it.isNotEmpty() })
+
+        vm.removeKid("Sam")
+        vm.kidsWithEntries.awaitValue { it.isEmpty() }
+        vm.usedCategories.awaitValue { it.isEmpty() }
+        vm.notesByCategory.awaitValue { it.isEmpty() }
+        Unit
+    }
+
+    @Test
     fun ledgerIsNullUntilLoadedThenHasBalanceAndEntries() = runBlocking {
         repository.insertTransaction(
             Transaction(kidName = "Sam", title = "Allowance", amountCents = 500, type = TransactionType.CREDIT)
@@ -219,7 +249,7 @@ class TrackerViewModelTest {
         repository.insertTransaction(existing)
 
         val tooBig = ByteArray(TransactionRepository.MAX_BACKUP_BYTES + 1) { ' '.code.toByte() }
-        val result = repository.importFromJson({ tooBig.inputStream() }, replaceExisting = true)
+        val result = repository.importFromJson({ tooBig.inputStream() })
 
         assertTrue(result.isFailure)
         assertEquals(listOf("Comic"), repository.getTransactionsForKid("Sam").first().map { it.title })
@@ -235,7 +265,7 @@ class TrackerViewModelTest {
         val backup = """{"kids":[{"name":"Sam"}],"categories":["Job"],"transactions":[
             {"kidName":"Sam","title":"Lawn","amountCents":500,"type":"CREDIT","category":"Job","timestamp":1}]}"""
 
-        assertTrue(repository.importFromJson({ backup.byteInputStream() }, replaceExisting = true).isSuccess)
+        assertTrue(repository.importFromJson({ backup.byteInputStream() }).isSuccess)
 
         assertEquals(listOf("Sam"), repository.kidNames.first())
         assertEquals(listOf("Job"), repository.categories.first())
@@ -248,10 +278,24 @@ class TrackerViewModelTest {
             Transaction(kidName = "Sam", title = "Comic", amountCents = 300, type = TransactionType.DEBIT)
         )
 
-        assertTrue(repository.importFromJson({ throw FileNotFoundException("gone") }, replaceExisting = true).isFailure)
+        assertTrue(repository.importFromJson({ throw FileNotFoundException("gone") }).isFailure)
         assertTrue(repository.exportToJson { null }.isFailure)
         assertTrue(repository.exportToCsv { throw SecurityException("no access") }.isFailure)
         assertEquals(listOf("Comic"), repository.allTransactions.first().map { it.title })
+    }
+
+    @Test
+    fun aBackupThatCantBeReadLeavesTheChosenFileUnopened() = runBlocking {
+        // Opening the file empties it, which would wipe out a backup being saved over.
+        db.close()
+        var opened = false
+        val result = repository.exportToJson {
+            opened = true
+            java.io.ByteArrayOutputStream()
+        }
+
+        assertTrue(result.isFailure)
+        assertEquals(false, opened)
     }
 
     @Test
@@ -308,7 +352,7 @@ class TrackerViewModelTest {
         repository.setCategoryIcon("Snacks", null)
         assertEquals(emptyMap<String, String>(), repository.categoryIcons.first())
 
-        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }, replaceExisting = true).isSuccess)
+        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }).isSuccess)
         assertEquals(mapOf("snacks" to "candy"), repository.categoryIcons.first())
     }
 
@@ -453,7 +497,7 @@ class TrackerViewModelTest {
         val file = java.io.ByteArrayOutputStream()
         assertTrue(repository.exportToJson { file }.isSuccess)
         repository.deleteKidAndEntries("Sam")
-        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }, replaceExisting = true).isSuccess)
+        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }).isSuccess)
 
         val money = repository.getMoneyForKid("Sam").first()
         val restoredGoal = money.goals.single()

@@ -123,11 +123,7 @@ class TrackerViewModel(
      * pre-select the category in the entry form. Types with no entries are absent.
      */
     val lastCategoryByType: StateFlow<Map<TransactionType, String>> =
-        repository.allTransactions
-            .map { list ->
-                // allTransactions is newest first, so the first match per type wins.
-                list.groupBy { it.type }.mapValues { (_, entries) -> entries.first().category }
-            }
+        repository.lastCategoryByType
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
@@ -137,11 +133,11 @@ class TrackerViewModel(
     /** Kids who have at least one entry, goal or repeating entry, so removing them asks first. */
     val kidsWithEntries: StateFlow<Set<String>> =
         combine(
-            repository.allTransactions,
+            repository.kidsWithTransactions,
             repository.kidsWithGoals,
             repository.kidsWithRecurring
-        ) { list, kidsWithGoals, kidsWithRecurring ->
-            list.map { tx -> tx.kidName }.toSet() + kidsWithGoals + kidsWithRecurring
+        ) { kidsWithTransactions, kidsWithGoals, kidsWithRecurring ->
+            kidsWithTransactions.toSet() + kidsWithGoals + kidsWithRecurring
         }
             .stateIn(
                 scope = viewModelScope,
@@ -151,8 +147,7 @@ class TrackerViewModel(
 
     /** Every entry's note, keyed by lower-cased category, for suggesting category icons. */
     val notesByCategory: StateFlow<Map<String, List<String>>> =
-        repository.allTransactions
-            .map { list -> list.groupBy({ it.category.lowercase() }, { it.title }) }
+        repository.notesByCategory
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
@@ -160,8 +155,8 @@ class TrackerViewModel(
             )
 
     val usedCategories: StateFlow<Set<String>> =
-        combine(repository.allTransactions, repository.recurringCategories) { list, recurringCategories ->
-            (list.map { tx -> tx.category } + recurringCategories).map { it.lowercase() }.toSet()
+        combine(repository.transactionCategories, repository.recurringCategories) { entryCategories, recurringCategories ->
+            (entryCategories + recurringCategories).map { it.lowercase() }.toSet()
         }
             .stateIn(
                 scope = viewModelScope,
@@ -638,7 +633,7 @@ class TrackerViewModel(
 
     fun importFromJson(openStream: () -> InputStream?) {
         viewModelScope.launch {
-            repository.importFromJson(openStream, replaceExisting = true)
+            repository.importFromJson(openStream)
                 .onSuccess { count ->
                     emitCountMessage(R.plurals.message_restore_succeeded, count)
                     // Repeating entries in the backup may have come due since it was made.

@@ -9,6 +9,7 @@ import androidx.room.Query
 import com.vivificavit.shortstack.data.model.CategoryEntity
 import com.vivificavit.shortstack.data.model.KidProfile
 import com.vivificavit.shortstack.data.model.Transaction
+import com.vivificavit.shortstack.data.model.TransactionType
 import kotlinx.coroutines.flow.Flow
 
 data class CategorySum(
@@ -18,8 +19,46 @@ data class CategorySum(
     val totalCents: Long
 )
 
+/** An entry type with a category used for it. */
+data class TypeCategory(
+    val type: TransactionType,
+    val category: String
+)
+
+/** One entry's category and note. */
+data class CategoryNote(
+    val category: String,
+    val title: String
+)
+
 @Dao
 interface TransactionDao {
+
+    /** Kids with at least one entry. */
+    @Query("SELECT DISTINCT kidName FROM transactions")
+    fun getKidsWithTransactions(): Flow<List<String>>
+
+    /** Every category an entry uses. */
+    @Query("SELECT DISTINCT category FROM transactions")
+    fun getTransactionCategories(): Flow<List<String>>
+
+    /** The category of the newest entry of each type, across all kids: at most one row per type. */
+    @Query(
+        """
+        SELECT type, category FROM transactions AS newest
+        WHERE id = (
+            SELECT id FROM transactions
+            WHERE type = newest.type
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+        )
+        """
+    )
+    fun getLastCategoryByType(): Flow<List<TypeCategory>>
+
+    /** Every entry's category and note, newest first. */
+    @Query("SELECT category, title FROM transactions ORDER BY timestamp DESC, id DESC")
+    fun getCategoryNotes(): Flow<List<CategoryNote>>
 
     @Query("SELECT name FROM kids ORDER BY createdAt ASC, id ASC")
     fun getAllKidNames(): Flow<List<String>>

@@ -110,6 +110,23 @@ class TransactionRepository(
 
     val allTransactions: Flow<List<Transaction>> = transactionDao.getAllTransactions()
 
+    // The four below answer questions about every entry with a query that returns only
+    // the answer, rather than by loading every entry each time one changes.
+
+    /** Kids with at least one entry. */
+    val kidsWithTransactions: Flow<List<String>> = transactionDao.getKidsWithTransactions()
+
+    /** Every category an entry uses, as written on the entries. */
+    val transactionCategories: Flow<List<String>> = transactionDao.getTransactionCategories()
+
+    /** The category of the newest entry of each type, across all kids. Types with no entries are absent. */
+    val lastCategoryByType: Flow<Map<TransactionType, String>> = transactionDao.getLastCategoryByType()
+        .map { rows -> rows.associate { it.type to it.category } }
+
+    /** Every entry's note, newest first, keyed by lower-cased category. */
+    val notesByCategory: Flow<Map<String, List<String>>> = transactionDao.getCategoryNotes()
+        .map { rows -> rows.groupBy({ it.category.lowercase() }, { it.title }) }
+
     fun getTransactionsForKid(kidName: String): Flow<List<Transaction>> {
         return transactionDao.getTransactionsForKid(kidName)
     }
@@ -514,26 +531,28 @@ class TransactionRepository(
         return if (fixes.isEmpty()) emptyList() else goalDao.insertMoves(fixes)
     }
 
-    /** Writes every kid, category and transaction. Closes [outputStream]. */
+    /**
+     * Writes everything as a backup to the stream [openStream] gives, and closes it.
+     * The backup is read and put together before the file is opened: opening empties
+     * a file being saved over, so a failure before then leaves that file as it was.
+     */
     suspend fun exportToJson(openStream: () -> OutputStream?): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
-            open(openStream).bufferedWriter(Charsets.UTF_8).use { writer ->
-                val payload = database.withTransaction {
-                    val transactions = transactionDao.getAllTransactions().first()
-                    val categories = transactionDao.getAllCategoriesOnce()
-                    BackupCodec.encode(
-                        kids = transactionDao.getAllKidsOnce(),
-                        categories = categories.map { it.name },
-                        transactions = transactions,
-                        categoryIcons = categories.mapNotNull { c -> c.icon?.let { c.name to it } }.toMap(),
-                        goals = goalDao.getAllGoalsOnce(),
-                        goalMoves = goalDao.getAllMovesOnce(),
-                        recurring = recurringDao.getAllRecurringOnce()
-                    ) to transactions.size
-                }
-                writer.write(payload.first)
-                payload.second
+            val (backup, count) = database.withTransaction {
+                val transactions = transactionDao.getAllTransactions().first()
+                val categories = transactionDao.getAllCategoriesOnce()
+                BackupCodec.encode(
+                    kids = transactionDao.getAllKidsOnce(),
+                    categories = categories.map { it.name },
+                    transactions = transactions,
+                    categoryIcons = categories.mapNotNull { c -> c.icon?.let { c.name to it } }.toMap(),
+                    goals = goalDao.getAllGoalsOnce(),
+                    goalMoves = goalDao.getAllMovesOnce(),
+                    recurring = recurringDao.getAllRecurringOnce()
+                ) to transactions.size
             }
+            open(openStream).bufferedWriter(Charsets.UTF_8).use { it.write(backup) }
+            count
         }
     }
 
@@ -541,33 +560,31 @@ class TransactionRepository(
     suspend fun exportToCsv(openStream: () -> OutputStream?): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val transactions = transactionDao.getAllTransactions().first()
-            open(openStream).bufferedWriter(Charsets.UTF_8).use { it.write(CsvExport.encode(transactions)) }
+            val spreadsheet = CsvExport.encode(transactions)
+            open(openStream).bufferedWriter(Charsets.UTF_8).use { it.write(spreadsheet) }
             transactions.size
         }
     }
 
     /**
-     * Restores a backup. The file is fully validated before the database is
-     * touched, and the replace runs in one database transaction, so a failure
-     * leaves existing data exactly as it was. Closes the stream [openStream] gives.
+     * Restores a backup in place of everything in the app. The file is fully
+     * validated before the database is touched, and the replace runs in one
+     * database transaction, so a failure leaves existing data exactly as it
+     * was. Closes the stream [openStream] gives.
      */
-    suspend fun importFromJson(
-        openStream: () -> InputStream?,
-        replaceExisting: Boolean = false
-    ): Result<Int> = withContext(Dispatchers.IO) {
+    suspend fun importFromJson(openStream: () -> InputStream?): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val rawJson = open(openStream).use { readAtMost(it, MAX_BACKUP_BYTES) }.toString(Charsets.UTF_8)
             val backup = BackupCodec.decode(rawJson)
             database.withTransaction {
-                if (replaceExisting) {
-                    // Everything goes, so kids and categories missing from the backup don't linger.
-                    transactionDao.deleteAll()
-                    transactionDao.deleteAllKids()
-                    transactionDao.deleteAllCategories()
-                    goalDao.deleteAllMoves()
-                    goalDao.deleteAllGoals()
-                    recurringDao.deleteAllRecurring()
-                }
+                // Everything goes, so kids and categories missing from the backup don't linger.
+                // Adding a backup to what's here was never offered: restoring twice would double every entry.
+                transactionDao.deleteAll()
+                transactionDao.deleteAllKids()
+                transactionDao.deleteAllCategories()
+                goalDao.deleteAllMoves()
+                goalDao.deleteAllGoals()
+                recurringDao.deleteAllRecurring()
                 backup.kids.forEach { transactionDao.insertKid(it) }
                 backup.categories.forEach { name ->
                     transactionDao.insertCategory(CategoryEntity(name = name, icon = backup.categoryIcons[name.lowercase()]))

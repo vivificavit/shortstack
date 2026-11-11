@@ -116,7 +116,7 @@ class RecurringEntriesTest {
         repository.deleteKidAndEntries("Sam")
         assertEquals(emptyList<RecurringEntry>(), repository.getRecurringForKid("Sam").first())
 
-        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }, replaceExisting = true).isSuccess)
+        assertTrue(repository.importFromJson({ file.toByteArray().inputStream() }).isSuccess)
         val schedule = repository.getRecurringForKid("Sam").first().single()
         val goal = repository.getGoalsForKid("Sam").first().single()
         assertEquals(goal.id, schedule.goalId)
