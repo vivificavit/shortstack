@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -61,6 +62,7 @@ fun ManageCategoriesDialog(
     notesByCategory: Map<String, List<String>>,
     onAddCategory: (String) -> Unit,
     onSetCategoryIcon: (category: String, iconKey: String?) -> Unit,
+    onRenameCategory: (oldName: String, newName: String) -> Unit,
     onDeleteUnusedCategory: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -77,6 +79,20 @@ fun ManageCategoriesDialog(
                 pickingIconFor = null
             },
             onDismiss = { pickingIconFor = null }
+        )
+    }
+    var renaming by rememberSaveable { mutableStateOf<String?>(null) }
+    renaming?.let { category ->
+        RenameDialog(
+            currentName = category,
+            allNames = categories,
+            labelRes = R.string.rename_category_label,
+            takenErrorRes = R.string.rename_category_name_taken,
+            onRename = { newName ->
+                onRenameCategory(category, newName)
+                renaming = null
+            },
+            onDismiss = { renaming = null }
         )
     }
     fun addCategory() {
@@ -150,6 +166,12 @@ fun ManageCategoriesDialog(
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = { renaming = catName }) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = stringResource(R.string.cd_rename_item, catName)
                                 )
                             }
                             IconButton(
@@ -232,12 +254,13 @@ fun AddKidDialog(
     )
 }
 
-/** Add or remove kids; removing a kid who has entries asks for confirmation first. */
+/** Add, rename or remove kids; removing a kid who has entries asks for confirmation first. */
 @Composable
 fun EditKidsDialog(
     kids: List<String>,
     kidsWithEntries: Set<String>,
     onAddKid: (String) -> Unit,
+    onRenameKid: (oldName: String, newName: String) -> Unit,
     onRemoveKid: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -249,6 +272,21 @@ fun EditKidsDialog(
         }
     }
     var pendingRemoval by rememberSaveable { mutableStateOf<String?>(null) }
+    var renaming by rememberSaveable { mutableStateOf<String?>(null) }
+
+    renaming?.let { kidName ->
+        RenameDialog(
+            currentName = kidName,
+            allNames = kids,
+            labelRes = R.string.add_kid_name_label,
+            takenErrorRes = R.string.rename_kid_name_taken,
+            onRename = { newName ->
+                onRenameKid(kidName, newName)
+                renaming = null
+            },
+            onDismiss = { renaming = null }
+        )
+    }
 
     pendingRemoval?.let { kidName ->
         AlertDialog(
@@ -331,6 +369,12 @@ fun EditKidsDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            IconButton(onClick = { renaming = kidName }) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = stringResource(R.string.cd_rename_item, kidName)
+                                )
+                            }
                             OutlinedButton(
                                 onClick = {
                                     if (hasEntries) pendingRemoval = kidName else onRemoveKid(kidName)
@@ -346,6 +390,77 @@ fun EditKidsDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.action_done))
+            }
+        }
+    )
+}
+
+/**
+ * Asks for a new name for the kid or category called [currentName]. A name another
+ * one in [allNames] has, in any capitalization, is refused here rather than after saving.
+ */
+@Composable
+private fun RenameDialog(
+    currentName: String,
+    allNames: List<String>,
+    @StringRes labelRes: Int,
+    @StringRes takenErrorRes: Int,
+    onRename: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameInput by rememberSaveable { mutableStateOf(currentName) }
+    var nameError by remember { mutableStateOf<Int?>(null) }
+    fun confirm() {
+        val newName = nameInput.trim()
+        val taken = allNames.any {
+            !it.equals(currentName, ignoreCase = true) && it.equals(newName, ignoreCase = true)
+        }
+        when {
+            newName.isBlank() -> nameError = R.string.add_kid_name_error
+            taken -> nameError = takenErrorRes
+            newName == currentName -> onDismiss()
+            else -> onRename(newName)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.rename_title, currentName), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = {
+                        nameInput = it
+                        nameError = null
+                    },
+                    label = { Text(stringResource(labelRes)) },
+                    singleLine = true,
+                    isError = nameError != null,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { confirm() }),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                nameError?.let { errorRes ->
+                    Text(
+                        text = stringResource(errorRes, nameInput.trim()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { confirm() }) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )

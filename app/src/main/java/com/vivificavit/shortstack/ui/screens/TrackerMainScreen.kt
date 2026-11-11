@@ -539,6 +539,7 @@ fun TrackerMainScreen(
             kids = kids,
             kidsWithEntries = kidsWithEntries,
             onAddKid = viewModel::addKid,
+            onRenameKid = viewModel::renameKid,
             onRemoveKid = viewModel::removeKid,
             onDismiss = { showEditKidsDialog = false }
         )
@@ -562,6 +563,7 @@ fun TrackerMainScreen(
             notesByCategory = notesByCategory,
             onAddCategory = viewModel::addCategory,
             onSetCategoryIcon = viewModel::setCategoryIcon,
+            onRenameCategory = viewModel::renameCategory,
             onDeleteUnusedCategory = viewModel::deleteUnusedCategory,
             onDismiss = { showManageCategoriesDialog = false }
         )

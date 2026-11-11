@@ -16,6 +16,7 @@ import com.vivificavit.shortstack.data.model.RecurringEntry
 import com.vivificavit.shortstack.data.model.Transaction
 import com.vivificavit.shortstack.data.model.TransactionType
 import com.vivificavit.shortstack.repository.KidMoneySnapshot
+import com.vivificavit.shortstack.repository.RenameResult
 import com.vivificavit.shortstack.repository.TransactionRepository
 import com.vivificavit.shortstack.util.BalanceHistory
 import com.vivificavit.shortstack.util.BalancePoint
@@ -86,11 +87,21 @@ class TrackerViewModel(
             initialValue = false
         )
 
+    /**
+     * The selected kid's old and new name while they're being renamed. The kid list
+     * and the stored choice don't change at the same moment; without this the app
+     * would show another kid's ledger in between.
+     */
+    private val renamedKid = MutableStateFlow<Pair<String, String>?>(null)
+
     /** The preferred kid if they still exist, otherwise the first kid; null when there are none. */
-    private val _selectedKid: StateFlow<String?> = combine(loadedKids, preferredKid) { names, preferred ->
+    private val _selectedKid: StateFlow<String?> = combine(loadedKids, preferredKid, renamedKid) { names, preferred, renamed ->
         when {
             names.isNullOrEmpty() || preferred == null -> null
             preferred.name != null && preferred.name in names -> preferred.name
+            // Mid-rename, one of the two has the new name and the other still has the old one.
+            renamed != null && preferred.name == renamed.first && renamed.second in names -> renamed.second
+            renamed != null && preferred.name == renamed.second && renamed.first in names -> renamed.first
             else -> names.first()
         }
     }.stateIn(
@@ -379,6 +390,27 @@ class TrackerViewModel(
         }
     }
 
+    /** Renames a kid, keeping everything of theirs, and stays on them if they're the selected kid. */
+    fun renameKid(oldName: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val wasSelected = _selectedKid.value == oldName
+            if (wasSelected) renamedKid.value = oldName to trimmed
+            when (repository.renameKid(oldName, trimmed)) {
+                RenameResult.RENAMED -> {
+                    if (wasSelected) selectKid(trimmed)
+                    emitMessage(R.string.message_kid_renamed, oldName, trimmed)
+                }
+                RenameResult.NAME_TAKEN -> {
+                    renamedKid.value = null
+                    emitMessage(R.string.message_kid_name_taken, trimmed)
+                }
+                else -> renamedKid.value = null
+            }
+        }
+    }
+
     /** Removes the kid and all of their entries; the UI confirms first when they have entries. */
     fun removeKid(kidName: String) {
         viewModelScope.launch {
@@ -396,6 +428,26 @@ class TrackerViewModel(
                 emitMessage(R.string.message_category_added, trimmed)
             } else {
                 emitMessage(R.string.message_category_exists, trimmed)
+            }
+        }
+    }
+
+    /** Renames a category on every entry that uses it; one hidden from the charts stays hidden. */
+    fun renameCategory(oldName: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            when (repository.renameCategory(oldName, trimmed)) {
+                RenameResult.RENAMED -> {
+                    val oldKey = oldName.trim().lowercase()
+                    val newKey = trimmed.lowercase()
+                    _hiddenCategories.update { hidden ->
+                        if (oldKey in hidden) hidden - oldKey + newKey else hidden - newKey
+                    }
+                    emitMessage(R.string.message_category_renamed, oldName, trimmed)
+                }
+                RenameResult.NAME_TAKEN -> emitMessage(R.string.message_category_exists, trimmed)
+                else -> Unit
             }
         }
     }

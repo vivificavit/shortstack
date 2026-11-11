@@ -39,6 +39,12 @@ interface GoalDao {
     @Query("DELETE FROM goals")
     suspend fun deleteAllGoals()
 
+    @Query("UPDATE goals SET kidName = :newName WHERE kidName = :oldName")
+    suspend fun renameKidInGoals(oldName: String, newName: String)
+
+    @Query("UPDATE goal_moves SET kidName = :newName WHERE kidName = :oldName")
+    suspend fun renameKidInMoves(oldName: String, newName: String)
+
     @Query("SELECT * FROM goal_moves WHERE kidName = :kidName ORDER BY timestamp DESC, id DESC")
     fun getMovesForKid(kidName: String): Flow<List<GoalMove>>
 
