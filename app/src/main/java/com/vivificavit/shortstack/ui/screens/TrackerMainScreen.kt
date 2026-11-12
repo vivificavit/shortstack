@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
@@ -130,6 +131,9 @@ fun TrackerMainScreen(
     val endDateMillis by viewModel.endDateMillis.collectAsStateWithLifecycle()
     val quickRange by viewModel.quickRange.collectAsStateWithLifecycle()
     val recurring by viewModel.recurring.collectAsStateWithLifecycle()
+    val showAllKids by viewModel.showAllKids.collectAsStateWithLifecycle()
+    val kidTiles by viewModel.kidTiles.collectAsStateWithLifecycle()
+    val loadedKid by viewModel.loadedKid.collectAsStateWithLifecycle()
 
     // Add repeating entries that came due while the app was closed or in the background,
     // then again at each midnight for as long as it stays open.
@@ -169,6 +173,23 @@ fun TrackerMainScreen(
     // Where Move money starts; null is pocket money.
     var moveFromGoalId by rememberSaveable { mutableStateOf<Long?>(null) }
     var moveToGoalId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showEntryKidDialog by rememberSaveable { mutableStateOf(false) }
+    // The kid picked for a new entry from the all-kids overview, until their money has loaded.
+    var entryForKid by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // The overview belongs to the Ledger tab; Goals and Trends stay on the kid last shown.
+    val overviewShowing = showAllKids == true && selectedTabIndex == TrackerTab.RUNNING_TALLY.ordinal
+
+    // Open the entry sheet only once it would show the picked kid's own money and goals.
+    LaunchedEffect(entryForKid, selectedKid, loadedKid) {
+        val kid = entryForKid
+        if (kid != null && kid == selectedKid && kid == loadedKid) {
+            entryForKid = null
+            editingEntryId = null
+            buyingGoalId = null
+            showEntrySheet = true
+        }
+    }
 
     val goalActions = remember(viewModel) {
         object : GoalActions {
@@ -260,15 +281,18 @@ fun TrackerMainScreen(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Person,
+                                    imageVector = if (overviewShowing) Icons.Default.Group else Icons.Default.Person,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     // Blank while loading, so "Add kid" only shows when there really are none.
-                                    text = selectedKid
-                                        ?: if (hasNoKids) stringResource(R.string.kid_menu_none) else "",
+                                    text = when {
+                                        overviewShowing -> stringResource(R.string.kid_menu_all)
+                                        else -> selectedKid
+                                            ?: if (hasNoKids) stringResource(R.string.kid_menu_none) else ""
+                                    },
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -284,12 +308,38 @@ fun TrackerMainScreen(
                                 expanded = kidMenuExpanded,
                                 onDismissRequest = { kidMenuExpanded = false }
                             ) {
+                                // The check follows the button's label: the overview on Ledger, a kid elsewhere.
+                                if (kids.size >= 2) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = stringResource(R.string.kid_menu_all),
+                                                fontWeight = if (overviewShowing) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            if (overviewShowing) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = stringResource(R.string.cd_selected)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            kidMenuExpanded = false
+                                            viewModel.showAllKids()
+                                            selectedTabIndex = TrackerTab.RUNNING_TALLY.ordinal
+                                        }
+                                    )
+                                    HorizontalDivider()
+                                }
                                 kids.forEach { kidName ->
+                                    val isShown = kidName == selectedKid && !overviewShowing
                                     DropdownMenuItem(
                                         text = {
                                             Text(
                                                 text = kidName,
-                                                fontWeight = if (kidName == selectedKid) {
+                                                fontWeight = if (isShown) {
                                                     FontWeight.Bold
                                                 } else {
                                                     FontWeight.Normal
@@ -297,7 +347,7 @@ fun TrackerMainScreen(
                                             )
                                         },
                                         trailingIcon = {
-                                            if (kidName == selectedKid) {
+                                            if (isShown) {
                                                 Icon(
                                                     imageVector = Icons.Default.Check,
                                                     contentDescription = stringResource(R.string.cd_selected)
@@ -441,7 +491,10 @@ fun TrackerMainScreen(
                                 showGoalDialog = true
                             }
                             TrackerTab.TRENDS -> showDateRangeDialog = true
-                            TrackerTab.RUNNING_TALLY -> {
+                            // From the overview, ask which kid it's for first.
+                            TrackerTab.RUNNING_TALLY -> if (overviewShowing) {
+                                showEntryKidDialog = true
+                            } else {
                                 editingEntryId = null
                                 buyingGoalId = null
                                 showEntrySheet = true
@@ -486,7 +539,17 @@ fun TrackerMainScreen(
             return@Scaffold
         }
         when (TrackerTab.entries[selectedTabIndex]) {
-            TrackerTab.RUNNING_TALLY -> {
+            // Nothing while the choice between the two is still loading.
+            TrackerTab.RUNNING_TALLY -> if (showAllKids == true) {
+                AllKidsTabContent(
+                    tiles = kidTiles,
+                    categoryIcons = categoryIcons,
+                    onOpenKid = viewModel::selectKid,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                )
+            } else if (showAllKids == false) {
                 RunningTallyTabContent(
                     kidName = kidName,
                     ledger = ledger,
@@ -541,6 +604,18 @@ fun TrackerMainScreen(
                 viewModel.addKid(newKidName)
                 showAddKidDialog = false
             }
+        )
+    }
+
+    if (showEntryKidDialog) {
+        EntryKidDialog(
+            kids = kids,
+            onPick = { kidName ->
+                showEntryKidDialog = false
+                entryForKid = kidName
+                viewModel.selectKid(kidName)
+            },
+            onDismiss = { showEntryKidDialog = false }
         )
     }
 

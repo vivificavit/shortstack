@@ -141,6 +141,35 @@ class TrackerViewModel(
     )
     val selectedKid: StateFlow<String?> = _selectedKid
 
+    /**
+     * Whether the Ledger tab shows every kid at once. It takes two kids to be worth it,
+     * so with fewer the stored choice waits unused. Null until both have loaded, so the
+     * tab doesn't flash one view before showing the other.
+     */
+    val showAllKids: StateFlow<Boolean?> = combine(loadedKids, settings.showAllKids) { names, show ->
+        names?.let { show && it.size >= 2 }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = null
+    )
+
+    /** A tile per kid for the all-kids overview; null while it's off or still loading. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val kidTiles: StateFlow<List<KidTileState>?> = showAllKids
+        .flatMapLatest { show ->
+            if (show == true) {
+                repository.getMoneyForAllKids().map { buildKidTiles(it) }.flowOn(Dispatchers.Default)
+            } else {
+                flowOf(null)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null
+        )
+
     val categories: StateFlow<List<String>> = repository.categories
         .map { list ->
             if (list.isEmpty()) DefaultCategories.DEFAULT_CATEGORIES else list
@@ -281,6 +310,18 @@ class TrackerViewModel(
             initialValue = null
         )
 
+    /**
+     * The kid whose money has loaded. For a moment after switching kids it's still
+     * the previous one, and so are [ledger] and [goals].
+     */
+    val loadedKid: StateFlow<String?> = kidMoney
+        .map { it?.kidName }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = null
+        )
+
     /** The selected kid's balance and entries; null until they have loaded. */
     val ledger: StateFlow<LedgerState?> = kidMoney
         .map { it?.ledger }
@@ -403,10 +444,22 @@ class TrackerViewModel(
         _hiddenCategories.update { it - category.trim().lowercase() }
     }
 
+    /** Shows one kid, leaving the all-kids overview if it was up. */
     fun selectKid(kidName: String) {
         val trimmed = kidName.trim()
         if (trimmed.isBlank()) return
-        viewModelScope.launch { settings.setLastSelectedKid(trimmed) }
+        viewModelScope.launch { showKid(trimmed) }
+    }
+
+    // The kid first, so the overview never gives way to the kid shown before it.
+    private suspend fun showKid(kidName: String) {
+        settings.setLastSelectedKid(kidName)
+        settings.setShowAllKids(false)
+    }
+
+    /** Shows every kid on the Ledger tab. */
+    fun showAllKids() {
+        viewModelScope.launch { settings.setShowAllKids(true) }
     }
 
     fun addKid(kidName: String) {
@@ -415,7 +468,7 @@ class TrackerViewModel(
         viewModelScope.launch {
             // "sam" when there's already a "Sam" switches to Sam rather than adding a second kid.
             val stored = repository.insertKid(trimmed)
-            settings.setLastSelectedKid(stored)
+            showKid(stored)
             emitMessage(R.string.message_switched_kid, stored)
         }
     }
@@ -429,7 +482,8 @@ class TrackerViewModel(
             if (wasSelected) renamedKid.value = oldName to trimmed
             when (repository.renameKid(oldName, trimmed)) {
                 RenameResult.RENAMED -> {
-                    if (wasSelected) selectKid(trimmed)
+                    // Not selectKid: renaming a kid shouldn't close the all-kids overview.
+                    if (wasSelected) settings.setLastSelectedKid(trimmed)
                     emitMessage(R.string.message_kid_renamed, oldName, trimmed)
                 }
                 RenameResult.NAME_TAKEN -> {
