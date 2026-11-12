@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.SharedPreferencesMigration
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,10 @@ interface SettingsStore {
     /** The code of the currency amounts are shown in (see AppCurrency); null until one is set. */
     val currencyCode: Flow<String?>
     suspend fun setCurrencyCode(code: String)
+
+    /** Whether the Ledger tab shows every kid at once, rather than one kid's entries. */
+    val showAllKids: Flow<Boolean>
+    suspend fun setShowAllKids(show: Boolean)
 }
 
 /** SharedPreferences file used before DataStore; migrated on first read. */
@@ -46,9 +51,17 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
         dataStore.edit { it[KEY_CURRENCY] = code }
     }
 
+    override val showAllKids: Flow<Boolean> =
+        dataStore.data.map { it[KEY_SHOW_ALL_KIDS] ?: false }
+
+    override suspend fun setShowAllKids(show: Boolean) {
+        dataStore.edit { it[KEY_SHOW_ALL_KIDS] = show }
+    }
+
     private companion object {
         // Same name as the legacy SharedPreferences key, so the migration carries it over.
         val KEY_LAST_SELECTED_KID = stringPreferencesKey("last_selected_kid")
         val KEY_CURRENCY = stringPreferencesKey("currency")
+        val KEY_SHOW_ALL_KIDS = booleanPreferencesKey("show_all_kids")
     }
 }

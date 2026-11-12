@@ -135,6 +135,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC, id DESC")
     fun getAllTransactions(): Flow<List<Transaction>>
 
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, id DESC")
+    suspend fun getAllTransactionsOnce(): List<Transaction>
+
     @Query("SELECT * FROM transactions WHERE kidName = :kidName ORDER BY timestamp DESC, id DESC")
     fun getTransactionsForKid(kidName: String): Flow<List<Transaction>>
 

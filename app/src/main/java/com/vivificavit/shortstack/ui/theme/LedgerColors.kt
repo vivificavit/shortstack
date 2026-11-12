@@ -58,3 +58,19 @@ val CategoryPalette = listOf(
 
 /** Categories past [CategoryPalette]: plain gray, so it reads as "other" rather than another color. */
 val OtherCategoryColor = Slate500
+
+/**
+ * Kid colors for the all-kids overview, handed out in kid-list order and reused
+ * from the start for a seventh kid. Each is dark enough for a white initial on
+ * top, and none is close to the income green or expense red.
+ */
+val KidPalette = listOf(
+    Color(0xFF4338CA), // indigo-700
+    Color(0xFFB45309), // amber-700
+    Color(0xFF86198F), // fuchsia-800
+    Color(0xFF0369A1), // sky-700
+    Color(0xFFBE185D), // pink-700
+    Color(0xFF475569)  // slate-600
+)
+
+fun kidColor(index: Int): Color = KidPalette[index.mod(KidPalette.size)]

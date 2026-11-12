@@ -7,6 +7,7 @@
     <string name="cd_select_kid">Select kid</string>
     <string name="cd_selected">Selected</string>
     <string name="menu_edit_kids">Edit kids</string>
+    <string name="kid_menu_all">All kids</string>
     <string name="cd_more_options">More options</string>
     <string name="menu_export_backup">Export backup…</string>
     <string name="menu_export_csv">Export spreadsheet (CSV)…</string>
@@ -95,6 +96,14 @@
     <string name="cd_show_goals">Show goals</string>
     <string name="empty_ledger_title">No entries yet</string>
     <string name="empty_ledger_hint">Tap \'+ Entry\' below to add an entry.</string>
+
+    <!-- Ledger tab, all kids -->
+    <string name="tile_balance_label">Balance</string>
+    <string name="tile_pocket_money_label">Pocket money</string>
+    <string name="tile_see_all">See all %1$d entries</string>
+    <string name="tile_open_ledger">Open ledger</string>
+    <string name="cd_open_kid_ledger">Open %1$s\'s ledger</string>
+    <string name="entry_kid_title">Who\'s it for?</string>
 
     <!-- Goals tab -->
     <string name="goals_pocket_money">Pocket money free to save</string>

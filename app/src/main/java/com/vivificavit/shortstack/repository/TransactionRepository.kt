@@ -107,6 +107,31 @@ class TransactionRepository(
             }
             .flowOn(Dispatchers.IO)
 
+    /**
+     * Every kid's money, in kid-list order, read in one database transaction like
+     * [getMoneyForKid]. The kid list comes from the same read, so a kid being renamed
+     * or removed never shows up with someone else's (or no) money in between.
+     */
+    fun getMoneyForAllKids(): Flow<List<Pair<String, KidMoneySnapshot>>> =
+        database.invalidationTracker.createFlow("kids", "transactions", "goals", "goal_moves")
+            .conflate()
+            .map {
+                database.withTransaction {
+                    val transactions = transactionDao.getAllTransactionsOnce().groupBy { it.kidName }
+                    val goals = goalDao.getAllGoalsOnce().groupBy { it.kidName }
+                    // Stored oldest first; a snapshot's moves are newest first.
+                    val moves = goalDao.getAllMovesOnce().asReversed().groupBy { it.kidName }
+                    transactionDao.getAllKidsOnce().map { kid ->
+                        kid.name to KidMoneySnapshot(
+                            transactions = transactions[kid.name].orEmpty(),
+                            goals = goals[kid.name].orEmpty(),
+                            moves = moves[kid.name].orEmpty()
+                        )
+                    }
+                }
+            }
+            .flowOn(Dispatchers.IO)
+
     /** Kids with at least one repeating entry. */
     val kidsWithRecurring: Flow<List<String>> = recurringDao.getKidsWithRecurring()
 

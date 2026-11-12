@@ -53,6 +53,11 @@ class TrackerViewModelTest {
         override suspend fun setCurrencyCode(code: String) {
             currencyCode.value = code
         }
+
+        override val showAllKids = MutableStateFlow(false)
+        override suspend fun setShowAllKids(show: Boolean) {
+            showAllKids.value = show
+        }
     }
 
     private lateinit var db: AppDatabase
@@ -788,5 +793,88 @@ class TrackerViewModelTest {
         vm.startDateMillis.awaitValue { it == null }
         assertEquals(null, vm.quickRange.value)
     }
-}
 
+    private suspend fun addEntry(kid: String, title: String, cents: Long, type: TransactionType, at: Long) =
+        repository.insertTransaction(
+            Transaction(kidName = kid, title = title, amountCents = cents, type = type, timestamp = at)
+        )
+
+    @Test
+    fun allKidsTilesShowEachKidsHeadlineAndNewestEntries() = runBlocking {
+        repository.insertKid("Ada")
+        repository.insertKid("Sam")
+        repository.insertKid("Zed")
+        addEntry("Ada", "Allowance", 500, TransactionType.CREDIT, at = 1_000)
+        addEntry("Ada", "Gum", 125, TransactionType.DEBIT, at = 2_000)
+        addEntry("Ada", "Chores", 300, TransactionType.CREDIT, at = 3_000)
+        addEntry("Ada", "Comic", 400, TransactionType.DEBIT, at = 4_000)
+        // Sam is saving for something, so his headline is pocket money, as on his own ledger.
+        val bike = repository.saveGoal(Goal(kidName = "Sam", name = "Bike", targetCents = 5_000))
+        repository.insertTransaction(
+            Transaction(kidName = "Sam", title = "Gift", amountCents = 1_000, type = TransactionType.CREDIT),
+            split = GoalSplit(bike, 300)
+        )
+
+        val vm = TrackerViewModel(repository, FakeStore(initial = "Sam"))
+        vm.showAllKids.awaitValue { it == false }
+        assertEquals(null, vm.kidTiles.value)
+
+        vm.showAllKids()
+        val tiles = vm.kidTiles.awaitValue { it?.size == 3 }!!
+        assertEquals(listOf("Ada", "Sam", "Zed"), tiles.map { it.kidName })
+        assertEquals(listOf(0, 1, 2), tiles.map { it.colorIndex })
+
+        val (ada, sam, zed) = tiles
+        assertEquals(275L, ada.headlineCents)
+        assertEquals(false, ada.hasGoals)
+        assertEquals(listOf("Comic", "Chores", "Gum"), ada.recent.map { it.title })
+        assertEquals(4, ada.entryCount)
+
+        assertEquals(700L, sam.headlineCents)
+        assertEquals(true, sam.hasGoals)
+        assertEquals(1, sam.entryCount)
+
+        assertEquals(0L, zed.headlineCents)
+        assertTrue(zed.recent.isEmpty())
+        assertEquals(0, zed.entryCount)
+
+        // A new entry shows up on its kid's tile.
+        addEntry("Zed", "Tooth fairy", 200, TransactionType.CREDIT, at = 5_000)
+        vm.kidTiles.awaitValue { it?.get(2)?.headlineCents == 200L }
+        Unit
+    }
+
+    @Test
+    fun allKidsOverviewNeedsTwoKidsAndClosesWhenAKidIsPicked() = runBlocking {
+        repository.insertKid("Ada")
+        val store = FakeStore(initial = "Ada")
+        val vm = TrackerViewModel(repository, store)
+
+        // With one kid the choice is kept but there's no overview to show.
+        vm.showAllKids()
+        store.showAllKids.awaitValue { it }
+        assertEquals(false, vm.showAllKids.value)
+
+        repository.insertKid("Sam")
+        vm.showAllKids.awaitValue { it == true }
+
+        // Renaming the selected kid keeps the overview up.
+        vm.renameKid("Ada", "Adele")
+        vm.selectedKid.awaitValue { it == "Adele" }
+        store.lastSelectedKid.awaitValue { it == "Adele" }
+        assertEquals(true, vm.showAllKids.value)
+        assertEquals(listOf("Adele", "Sam"), vm.kidTiles.awaitValue { it?.firstOrNull()?.kidName == "Adele" }!!.map { it.kidName })
+
+        // Picking a kid shows that kid alone.
+        vm.selectKid("Sam")
+        vm.showAllKids.awaitValue { it == false }
+        assertEquals("Sam", vm.selectedKid.value)
+
+        // Back to one kid, the overview has nothing to compare.
+        vm.showAllKids()
+        vm.showAllKids.awaitValue { it == true }
+        vm.removeKid("Adele")
+        vm.showAllKids.awaitValue { it == false }
+        Unit
+    }
+}
