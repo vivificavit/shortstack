@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -19,6 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vivificavit.shortstack.R
 import com.vivificavit.shortstack.data.model.Transaction
@@ -75,6 +80,12 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+
+/** From this width up (an unfolded phone, a tablet), the all-kids tiles sit two across. */
+private val TwoColumnWidth = 600.dp
+
+/** How many columns of kid tiles fit in a window this wide. */
+internal fun kidTileColumns(width: Dp): Int = if (width >= TwoColumnWidth) 2 else 1
 
 /** Above this system font scale, rows stack the amount under the note. */
 private const val LargeTextScale = 1.3f
@@ -457,7 +468,8 @@ fun EmptyTransactionsCard(
 }
 
 /**
- * Every kid at once: a tile each, with their headline amount and newest entries.
+ * Every kid at once: a tile each, with their headline amount and newest entries,
+ * in one column on a phone and two on a wider window.
  * Shows nothing until [tiles] has loaded.
  */
 @Composable
@@ -469,25 +481,31 @@ fun AllKidsTabContent(
 ) {
     if (tiles == null) return
 
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = 12.dp,
-            bottom = 96.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(
-            items = tiles,
-            key = { tile -> tile.kidName }
-        ) { tile ->
-            KidTile(
-                tile = tile,
-                categoryIcons = categoryIcons,
-                onClick = { onOpenKid(tile.kidName) }
-            )
+    // Staggered, so on a wide window a kid with fewer entries leaves room for the
+    // next tile under theirs rather than a gap beside a taller neighbour.
+    BoxWithConstraints(modifier = modifier) {
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(kidTileColumns(maxWidth)),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 12.dp,
+                bottom = 96.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalItemSpacing = 12.dp
+        ) {
+            gridItems(
+                items = tiles,
+                key = { tile -> tile.kidName }
+            ) { tile ->
+                KidTile(
+                    tile = tile,
+                    categoryIcons = categoryIcons,
+                    onClick = { onOpenKid(tile.kidName) }
+                )
+            }
         }
     }
 }
