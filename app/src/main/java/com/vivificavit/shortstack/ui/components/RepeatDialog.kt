@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -86,11 +87,12 @@ private val FrequencyChoices = listOf(
  */
 @Composable
 fun repeatSummary(frequency: Frequency, date: LocalDate): String {
-    val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+    val locale = currentLocale()
+    val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale)
     return when (frequency) {
         Frequency.WEEKLY -> stringResource(R.string.repeat_summary_weekly, weekday)
         Frequency.EVERY_2_WEEKS -> stringResource(R.string.repeat_summary_2_weeks, weekday)
-        Frequency.MONTHLY -> stringResource(R.string.repeat_summary_monthly, ordinal(date.dayOfMonth))
+        Frequency.MONTHLY -> stringResource(R.string.repeat_summary_monthly, ordinal(date.dayOfMonth, locale))
     }
 }
 
@@ -100,8 +102,9 @@ fun repeatSummary(entry: RecurringEntry, zone: ZoneId = ZoneId.systemDefault()):
     repeatSummary(entry.frequency, DateRanges.timestampToLocalDate(entry.startTimestamp, zone))
 
 /** A date with its weekday, like "Sat, Nov 14"; the year is added when it isn't [today]'s. */
+@Composable
 fun formatRepeatDate(date: LocalDate, today: LocalDate): String {
-    val locale = Locale.getDefault()
+    val locale = currentLocale()
     val skeleton = if (date.year == today.year) "EEEMMMd" else "EEEyMMMd"
     return date.format(DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale))
 }
@@ -241,7 +244,7 @@ fun RepeatDialog(
         repeatsFrom = day
     }
     var pickingDate by rememberSaveable { mutableStateOf(false) }
-    val locale = Locale.getDefault()
+    val locale = currentLocale()
     val weekdays = remember(locale) {
         val first = WeekFields.of(locale).firstDayOfWeek
         (0L..6L).map { first.plus(it) }
@@ -456,7 +459,11 @@ private fun DayOfMonthGrid(selected: Int, onSelect: (Int) -> Unit) {
     }
 }
 
-/** [day] as the locale says it in a date: "15th" in English. */
-private fun ordinal(day: Int): String = MessageFormat("{0,ordinal}", Locale.getDefault()).format(arrayOf(day))
+/** [day] as [locale] says it in a date: "15th" in English. */
+private fun ordinal(day: Int, locale: Locale): String = MessageFormat("{0,ordinal}", locale).format(arrayOf(day))
+
+/** The app's locale, read so that text follows the user changing their language. */
+@Composable
+private fun currentLocale(): Locale = LocalConfiguration.current.locales[0]
 
 private fun nextOrSame(from: LocalDate, day: DayOfWeek): LocalDate = from.with(TemporalAdjusters.nextOrSame(day))
