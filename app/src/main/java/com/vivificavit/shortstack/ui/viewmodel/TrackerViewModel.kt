@@ -640,10 +640,17 @@ class TrackerViewModel(
         }
     }
 
-    /** Saves changes to a repeating entry; they apply to the entries it adds from now on. */
-    fun updateRecurring(entry: RecurringEntry) {
+    /**
+     * Saves changes to a repeating entry; they apply to the entries it adds from now on.
+     * [nextDate] is the day its next entry moves to, when that was changed; moved to
+     * today, it's added straight away.
+     */
+    fun updateRecurring(entry: RecurringEntry, nextDate: LocalDate? = null) {
         showCategory(entry.category)
-        viewModelScope.launch { repository.saveRecurring(entry) }
+        viewModelScope.launch {
+            repository.saveRecurring(entry, nextDate = nextDate)
+            if (nextDate != null) addDueRecurring()
+        }
     }
 
     /** Stops a repeating entry, keeping what it already added; the snackbar offers Undo. */

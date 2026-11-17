@@ -772,9 +772,8 @@ fun TrackerMainScreen(
                     editingEntry?.let(viewModel::deleteTransaction)
                     closeSheet()
                 },
-                existingRepeat = editingEntry?.recurringId
+                existingSchedule = editingEntry?.recurringId
                     ?.let { id -> recurring.firstOrNull { it.id == id } }
-                    ?.frequency
             )
         }
     }
@@ -830,7 +829,8 @@ fun TrackerMainScreen(
                             frequency = draft.repeat ?: editingRecurring.frequency,
                             goalId = draft.split?.goalId,
                             goalCents = draft.split?.amountCents
-                        )
+                        ),
+                        nextDate = draft.nextDate
                     )
                     editingRecurringId = null
                 },

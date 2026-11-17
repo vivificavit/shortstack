@@ -28,6 +28,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.time.LocalDate
 import java.time.ZoneId
 
 /** What deleting an entry removed or changed, so Undo can put it back exactly. */
@@ -437,19 +438,27 @@ class TransactionRepository(
     /**
      * Saves changes to a repeating entry. They apply to the entries it adds from
      * now on. A new frequency restarts the schedule from its next due date, so
-     * it neither skips ahead nor fills in entries that were never due.
+     * it neither skips ahead nor fills in entries that were never due. [nextDate]
+     * restarts it on that day instead; pass it only when the day was changed, so
+     * an edit that left it alone can't bring back a date that's since been added.
      */
-    suspend fun saveRecurring(entry: RecurringEntry, zone: ZoneId = ZoneId.systemDefault()) {
+    suspend fun saveRecurring(
+        entry: RecurringEntry,
+        zone: ZoneId = ZoneId.systemDefault(),
+        nextDate: LocalDate? = null
+    ) {
         withContext(Dispatchers.IO) {
             database.withTransaction {
                 transactionDao.insertCategory(CategoryEntity(name = entry.category))
                 // Keep the count from the database, in case entries were added while this was being edited.
                 val current = recurringDao.getRecurring(entry.id) ?: return@withTransaction
-                val saved = if (entry.frequency == current.frequency) {
-                    entry.copy(occurrences = current.occurrences)
+                val next = RecurringMath.occurrence(current.startTimestamp, current.frequency, current.occurrences, zone)
+                val saved = if (entry.frequency == current.frequency && nextDate == null) {
+                    entry.copy(startTimestamp = current.startTimestamp, occurrences = current.occurrences)
                 } else {
-                    val next = RecurringMath.occurrence(current.startTimestamp, current.frequency, current.occurrences, zone)
-                    entry.copy(startTimestamp = next.toInstant().toEpochMilli(), occurrences = 0)
+                    // The same time of day, so entries keep their place among others that day.
+                    val restart = if (nextDate != null) next.with(nextDate) else next
+                    entry.copy(startTimestamp = restart.toInstant().toEpochMilli(), occurrences = 0)
                 }
                 recurringDao.upsertRecurring(saved)
             }
