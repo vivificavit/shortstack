@@ -1,6 +1,5 @@
 package com.vivificavit.shortstack.ui.components
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -84,7 +83,9 @@ import com.vivificavit.shortstack.ui.viewmodel.LedgerState
 import com.vivificavit.shortstack.util.DateRanges
 import com.vivificavit.shortstack.util.GoalMath
 import com.vivificavit.shortstack.util.Money
+import com.vivificavit.shortstack.util.RecurringMath
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
@@ -100,7 +101,9 @@ data class EntryDraft(
     /** For spending more than pocket money: the goal to take the rest from first. */
     val coverGoalId: Long? = null,
     /** How often it repeats; null for a one-off entry. */
-    val repeat: Frequency? = null
+    val repeat: Frequency? = null,
+    /** For a schedule being edited: the day its next entry moves to; null when that wasn't changed. */
+    val nextDate: LocalDate? = null
 )
 
 /**
@@ -153,22 +156,6 @@ data class EntryMoney(
 /** What an income entry set aside for a goal that's since been bought. */
 data class LockedSplit(val goalName: String, val amountCents: Long)
 
-/** The Repeat choices, with null for an entry that doesn't repeat. */
-private val RepeatChoices = listOf(
-    null to R.string.repeat_never,
-    Frequency.WEEKLY to R.string.repeat_weekly,
-    Frequency.EVERY_2_WEEKS to R.string.repeat_every_2_weeks,
-    Frequency.MONTHLY to R.string.repeat_monthly
-)
-
-/** How often [frequency] repeats, in words, for notes like "Repeats every week". */
-@StringRes
-fun repeatsRes(frequency: Frequency): Int = when (frequency) {
-    Frequency.WEEKLY -> R.string.repeats_weekly
-    Frequency.EVERY_2_WEEKS -> R.string.repeats_every_2_weeks
-    Frequency.MONTHLY -> R.string.repeats_monthly
-}
-
 /** Quick picks for how much of an income entry to set aside. */
 private val SplitPercents = listOf(10, 20, 50, 100)
 
@@ -177,8 +164,9 @@ private val SplitPercents = listOf(10, 20, 50, 100)
  * With [money], income can set some aside for a goal, and spending more than
  * pocket money says which goal pays the rest. With [buyingGoal], it records
  * buying that goal. A new entry can repeat; [schedule] edits a repeating entry
- * instead, and [existingRepeat] says how often the schedule [existing] came from
- * repeats. [onSave] gets the entry; the caller decides what to do with it.
+ * instead, and its draft's date is the day of its next entry. [existingSchedule]
+ * is the schedule [existing] came from. [onSave] gets the entry; the caller
+ * decides what to do with it.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -194,7 +182,7 @@ fun EntryBottomSheet(
     onSave: (EntryDraft) -> Unit,
     onDelete: () -> Unit,
     schedule: RecurringEntry? = null,
-    existingRepeat: Frequency? = null
+    existingSchedule: RecurringEntry? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val today = LocalToday.current
@@ -240,9 +228,26 @@ fun EntryBottomSheet(
     val goalsWithMoney = openGoals.filter { it.savedCents > 0L }
     val coverGoalId = coverGoalChoice?.takeIf { id -> goalsWithMoney.any { it.goal.id == id } }
         ?: goalsWithMoney.maxByOrNull { it.savedCents }?.goal?.id
+    // The entry's day; for a repeating one its first, and for a schedule being edited its next.
     var entryDate by rememberSaveable {
-        mutableStateOf(existing?.let { DateRanges.timestampToLocalDate(it.timestamp) } ?: today)
+        mutableStateOf(
+            existing?.let { DateRanges.timestampToLocalDate(it.timestamp) }
+                ?: schedule?.let { RecurringMath.nextDate(it, ZoneId.systemDefault()) }
+                ?: today
+        )
     }
+    // A monthly schedule repeats on its start's day, which a short month's entry falls before:
+    // one on the 31st has its next entry on Feb 28. Null when it's the same day as [entryDate].
+    var monthlyDay by rememberSaveable {
+        mutableStateOf(
+            schedule?.takeIf { it.frequency == Frequency.MONTHLY }
+                ?.let { DateRanges.timestampToLocalDate(it.startTimestamp) }
+                ?.takeIf { it.dayOfMonth != entryDate.dayOfMonth }
+        )
+    }
+    // Whether a schedule being edited was given another day; only then does saving move it.
+    var scheduleMoved by rememberSaveable { mutableStateOf(false) }
+    var pickingRepeat by rememberSaveable { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<Int?>(null) }
     var pickingDate by rememberSaveable { mutableStateOf(false) }
     var addingCategory by rememberSaveable { mutableStateOf(false) }
@@ -273,7 +278,8 @@ fun EntryBottomSheet(
                         timestamp = timestamp,
                         split = if (splitting && splitCents != null) GoalSplit(splitGoalId!!, splitCents) else null,
                         coverGoalId = coverGoalId.takeIf { selectedType == TransactionType.DEBIT },
-                        repeat = repeat.takeIf { repeatShown }
+                        repeat = repeat.takeIf { repeatShown },
+                        nextDate = entryDate.takeIf { schedule != null && scheduleMoved }
                     )
                 )
             }
@@ -446,27 +452,40 @@ fun EntryBottomSheet(
             }
 
             if (repeatShown) {
-                RepeatRow(
+                RepeatSection(
+                    type = selectedType,
                     repeat = repeat,
-                    // A schedule being edited stops from the Repeating entries list, not here.
-                    allowNever = schedule == null,
-                    onPick = {
-                        repeat = it
-                        // Only a repeating entry can start in the future; a one-off records what already happened.
-                        if (it == null && entryDate.isAfter(today)) entryDate = today
-                    }
+                    date = entryDate,
+                    repeatsFrom = monthlyDay ?: entryDate,
+                    editingSchedule = schedule != null,
+                    onToggle = { on ->
+                        if (on) {
+                            // It only repeats once the dialog says how.
+                            pickingRepeat = true
+                        } else {
+                            repeat = null
+                            // Only a repeating entry can start in the future; a one-off records what already happened.
+                            if (entryDate.isAfter(today)) entryDate = today
+                        }
+                    },
+                    onChange = { pickingRepeat = true }
                 )
             }
-            existingRepeat?.let { frequency ->
+            existingSchedule?.let { from ->
+                val zone = ZoneId.systemDefault()
                 Text(
-                    text = stringResource(R.string.entry_from_schedule, stringResource(repeatsRes(frequency))),
+                    text = stringResource(
+                        R.string.entry_from_schedule,
+                        repeatSummary(from, zone),
+                        formatRepeatDate(RecurringMath.nextDate(from, zone), today)
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // A schedule keeps its start date; edits apply from the next entry on.
-            if (schedule == null) OutlinedButton(
+            // A repeating entry's date is part of how it repeats, so it's picked there.
+            if (schedule == null && repeat == null) OutlinedButton(
                 onClick = { pickingDate = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -478,7 +497,7 @@ fun EntryBottomSheet(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(
-                        if (repeat != null) R.string.entry_date_first else R.string.entry_date,
+                        R.string.entry_date,
                         if (entryDate == today) {
                             stringResource(R.string.entry_date_today)
                         } else {
@@ -569,13 +588,12 @@ fun EntryBottomSheet(
     if (pickingDate) {
         val pickerState = rememberDatePickerState(
             initialSelectedDateMillis = DateRanges.localDateToPickerMillis(entryDate),
-            // No future dates for a one-off entry, which records something that already
-            // happened; a repeating one can start on a later day, like next payday.
+            // No future dates: a one-off entry records something that already happened.
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                    repeat != null || !DateRanges.pickerMillisToLocalDate(utcTimeMillis).isAfter(today)
+                    !DateRanges.pickerMillisToLocalDate(utcTimeMillis).isAfter(today)
 
-                override fun isSelectableYear(year: Int): Boolean = repeat != null || year <= today.year
+                override fun isSelectableYear(year: Int): Boolean = year <= today.year
             }
         )
         DatePickerDialog(
@@ -600,6 +618,24 @@ fun EntryBottomSheet(
         ) {
             DatePicker(state = pickerState)
         }
+    }
+
+    if (pickingRepeat) {
+        RepeatDialog(
+            initialFrequency = repeat,
+            initialDate = entryDate,
+            initialRepeatsFrom = monthlyDay ?: entryDate,
+            editingSchedule = schedule != null,
+            onConfirm = { frequency, date, repeatsFrom ->
+                val newMonthlyDay = repeatsFrom.takeIf { it != date }
+                if (date != entryDate || newMonthlyDay != monthlyDay) scheduleMoved = true
+                repeat = frequency
+                entryDate = date
+                monthlyDay = newMonthlyDay
+                pickingRepeat = false
+            },
+            onDismiss = { pickingRepeat = false }
+        )
     }
 
     if (addingCategory) {
@@ -846,31 +882,6 @@ private fun PurchaseSummary(goal: GoalProgress, priceCents: Long?) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-    }
-}
-
-/** How often a new entry repeats: Never, Weekly, Every 2 weeks or Monthly. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun RepeatRow(repeat: Frequency?, allowNever: Boolean, onPick: (Frequency?) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = stringResource(R.string.repeat_label),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RepeatChoices.filter { (frequency, _) -> allowNever || frequency != null }.forEach { (frequency, label) ->
-                FilterChip(
-                    selected = repeat == frequency,
-                    onClick = { onPick(frequency) },
-                    label = { Text(stringResource(label)) }
-                )
-            }
         }
     }
 }

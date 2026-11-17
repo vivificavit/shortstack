@@ -110,7 +110,7 @@ private fun RecurringRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = stringResource(R.string.recurring_amount, amount, stringResource(repeatsRes(entry.frequency))),
+                text = stringResource(R.string.recurring_amount, amount, repeatSummary(entry, zone)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (isCredit) CreditGreen else DebitRed
             )

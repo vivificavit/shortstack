@@ -20,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
@@ -140,6 +141,49 @@ class RecurringEntriesTest {
         assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-12-12"), zone = zone).map { it.count })
         assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-12-13"), zone = zone).map { it.count })
         assertEquals(8, entries().size)
+    }
+
+    @Test
+    fun movingTheNextEntryChangesTheDayItRepeatsOn() = runBlocking {
+        // Started on a Tuesday by mistake: one entry on Nov 10, next due Nov 17.
+        repository.addRecurring(allowance("2026-11-10"), now = at("2026-11-10"), zone = zone)
+        val tuesdays = repository.getRecurringForKid("Sam").first().single()
+
+        // Saving without a new date changes nothing.
+        repository.saveRecurring(tuesdays, zone = zone)
+        assertEquals(tuesdays, repository.getRecurringForKid("Sam").first().single())
+
+        // Moved to Saturday the 14th: due that day, then every Saturday, with no extra Tuesday.
+        repository.saveRecurring(tuesdays, zone = zone, nextDate = LocalDate.parse("2026-11-14"))
+        assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-11-14"), zone = zone).map { it.count })
+        assertEquals(emptyList<Any>(), repository.addDueRecurring(now = at("2026-11-20"), zone = zone))
+        assertEquals(listOf(1), repository.addDueRecurring(now = at("2026-11-21"), zone = zone).map { it.count })
+        assertEquals(listOf(at("2026-11-21"), at("2026-11-14"), at("2026-11-10")), entries().map { it.timestamp })
+    }
+
+    @Test
+    fun anEditThatLeavesTheDayAloneNeverRepeatsAnEntryAddedMeanwhile() = runBlocking {
+        repository.addRecurring(allowance("2026-11-07"), now = at("2026-11-07"), zone = zone)
+        // The editor opened on this copy, then the Nov 14 entry was added behind it.
+        val opened = repository.getRecurringForKid("Sam").first().single()
+        repository.addDueRecurring(now = at("2026-11-14"), zone = zone)
+
+        repository.saveRecurring(opened.copy(title = "Pocket money"), zone = zone)
+        assertEquals(emptyList<Any>(), repository.addDueRecurring(now = at("2026-11-14"), zone = zone))
+        assertEquals(2, entries().size)
+    }
+
+    @Test
+    fun aMonthlyScheduleCanMoveToTheDayAShortMonthPutItOn() = runBlocking {
+        // On the 31st: added Jan 31, next due Feb 28.
+        val monthly = allowance("2027-01-31").copy(frequency = Frequency.MONTHLY)
+        repository.addRecurring(monthly, now = at("2027-01-31"), zone = zone)
+        val on31st = repository.getRecurringForKid("Sam").first().single()
+
+        // Left alone it goes back to the 31st in March; moved to the 28th it stays there.
+        repository.saveRecurring(on31st, zone = zone, nextDate = LocalDate.parse("2027-02-28"))
+        repository.addDueRecurring(now = at("2027-03-30"), zone = zone)
+        assertEquals(listOf(at("2027-03-28"), at("2027-02-28"), at("2027-01-31")), entries().map { it.timestamp })
     }
 
     @Test

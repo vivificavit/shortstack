@@ -199,16 +199,31 @@
     <string name="entry_category_label">Category</string>
     <string name="entry_new_category">New</string>
     <string name="entry_date">Date: %1$s</string>
-    <string name="entry_date_first">First one: %1$s</string>
-    <string name="repeat_label">Repeat</string>
-    <string name="repeat_never">Never</string>
-    <string name="repeat_weekly">Weekly</string>
+    <string name="repeat_label">Repeats</string>
+    <string name="repeat_toggle_income">Repeat this income</string>
+    <string name="repeat_toggle_expense">Repeat this expense</string>
+    <string name="repeat_change">Change</string>
+    <string name="repeat_dialog_title">Repeat</string>
+    <string name="repeat_weekly">Every week</string>
     <string name="repeat_every_2_weeks">Every 2 weeks</string>
-    <string name="repeat_monthly">Monthly</string>
-    <string name="repeats_weekly">every week</string>
-    <string name="repeats_every_2_weeks">every 2 weeks</string>
-    <string name="repeats_monthly">every month</string>
-    <string name="entry_from_schedule">Repeats %1$s. Changes here only affect this entry.</string>
+    <string name="repeat_monthly">Every month</string>
+    <string name="repeat_on_label">On</string>
+    <string name="repeat_on_day_label">On day</string>
+    <string name="repeat_day_of_month">Day %1$d of the month</string>
+    <string name="repeat_short_months">Shorter months use their last day.</string>
+    <string name="repeat_first_one">First one: %1$s</string>
+    <string name="repeat_next_one">Next one: %1$s</string>
+    <string name="repeat_summary_weekly">Every %1$s</string>
+    <string name="repeat_summary_2_weeks">Every other %1$s</string>
+    <string name="repeat_summary_monthly">Every month on the %1$s</string>
+    <string name="repeat_note_today">The first one is added today.</string>
+    <string name="repeat_note_future">Nothing is added until then.</string>
+    <string name="repeat_note_editing">Entries already added stay as they are.</string>
+    <plurals name="repeat_note_catch_up">
+        <item quantity="one">%1$d entry is added right away, for that day.</item>
+        <item quantity="other">%1$d entries are added right away, to catch up.</item>
+    </plurals>
+    <string name="entry_from_schedule">%1$s, next on %2$s. Changes here, including the date, only affect this entry.</string>
     <string name="recurring_edit_title">Edit %1$s\'s repeating entry</string>
     <string name="entry_date_today">Today</string>
     <string name="entry_amount_error">Please enter an amount between %1$s and %2$s.</string>
@@ -349,8 +364,8 @@
 
     <!-- Repeating entries -->
     <string name="recurring_title">%1$s\'s repeating entries</string>
-    <string name="recurring_empty">Nothing repeats yet. When adding an entry, pick Weekly, Every 2 weeks or Monthly under Repeat.</string>
-    <string name="recurring_amount">%1$s %2$s</string>
+    <string name="recurring_empty">Nothing repeats yet. When adding an entry, turn on Repeat.</string>
+    <string name="recurring_amount">%1$s · %2$s</string>
     <string name="recurring_next">Next: %1$s</string>
     <string name="recurring_goal">%1$s to %2$s each time</string>
     <string name="action_stop">Stop</string>
