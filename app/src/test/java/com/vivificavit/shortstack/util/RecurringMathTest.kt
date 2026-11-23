@@ -53,4 +53,27 @@ class RecurringMathTest {
         val ancient = entry("1990-01-05", Frequency.WEEKLY)
         assertEquals(RecurringMath.MAX_CATCH_UP, RecurringMath.dueTimestamps(ancient, millis("2026-11-06"), zone).size)
     }
+
+    @Test
+    fun countsWhatANewScheduleAddsStraightAway() {
+        val today = LocalDate.parse("2026-11-14")
+        assertEquals(0, RecurringMath.dueCount(LocalDate.parse("2026-11-15"), Frequency.WEEKLY, today))
+        assertEquals(1, RecurringMath.dueCount(today, Frequency.WEEKLY, today))
+        // Oct 31, Nov 7 and Nov 14; every two weeks skips the middle one.
+        assertEquals(3, RecurringMath.dueCount(LocalDate.parse("2026-10-31"), Frequency.WEEKLY, today))
+        assertEquals(2, RecurringMath.dueCount(LocalDate.parse("2026-10-31"), Frequency.EVERY_2_WEEKS, today))
+        assertEquals(1, RecurringMath.dueCount(LocalDate.parse("2026-10-31"), Frequency.MONTHLY, today))
+    }
+
+    @Test
+    fun aPickedDayOfTheMonthStartsTheNextTimeItComesAround() {
+        val today = LocalDate.parse("2026-11-16")
+        assertEquals(today, RecurringMath.nextOnDayOfMonth(today, 16))
+        assertEquals(LocalDate.parse("2026-11-20"), RecurringMath.nextOnDayOfMonth(today, 20))
+        assertEquals(LocalDate.parse("2026-12-15"), RecurringMath.nextOnDayOfMonth(today, 15))
+        // November has no 31st, so it waits for December rather than settling on the 30th.
+        assertEquals(LocalDate.parse("2026-12-31"), RecurringMath.nextOnDayOfMonth(today, 31))
+        // And from late January, the 30th skips February altogether.
+        assertEquals(LocalDate.parse("2027-03-30"), RecurringMath.nextOnDayOfMonth(LocalDate.parse("2027-01-31"), 30))
+    }
 }

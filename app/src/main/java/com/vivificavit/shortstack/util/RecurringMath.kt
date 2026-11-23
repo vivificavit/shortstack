@@ -4,6 +4,8 @@ import com.vivificavit.shortstack.data.model.Frequency
 import com.vivificavit.shortstack.data.model.RecurringEntry
 import java.time.Instant
 import java.time.LocalDate
+import java.time.Period
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -19,12 +21,14 @@ object RecurringMath {
      * shorter months and goes back to the 31st after.
      */
     fun occurrence(startTimestamp: Long, frequency: Frequency, index: Int, zone: ZoneId): ZonedDateTime {
-        val start = Instant.ofEpochMilli(startTimestamp).atZone(zone)
-        return when (frequency) {
-            Frequency.WEEKLY -> start.plusWeeks(index.toLong())
-            Frequency.EVERY_2_WEEKS -> start.plusWeeks(2L * index)
-            Frequency.MONTHLY -> start.plusMonths(index.toLong())
-        }
+        return Instant.ofEpochMilli(startTimestamp).atZone(zone).plus(span(frequency, index))
+    }
+
+    /** How long after a schedule's start its entry number [index] falls. */
+    private fun span(frequency: Frequency, index: Int): Period = when (frequency) {
+        Frequency.WEEKLY -> Period.ofWeeks(index)
+        Frequency.EVERY_2_WEEKS -> Period.ofWeeks(2 * index)
+        Frequency.MONTHLY -> Period.ofMonths(index)
     }
 
     /**
@@ -41,6 +45,27 @@ object RecurringMath {
             .map { minOf(it.toInstant().toEpochMilli(), now) }
             .toList()
     }
+
+    /**
+     * How many entries a new schedule first dated [start] adds straight away on
+     * [today]: none for a start still to come, several for one in the past.
+     */
+    fun dueCount(start: LocalDate, frequency: Frequency, today: LocalDate): Int =
+        generateSequence(0) { it + 1 }
+            .map { start.plus(span(frequency, it)) }
+            .takeWhile { !it.isAfter(today) }
+            .take(MAX_CATCH_UP)
+            .count()
+
+    /**
+     * The next date that is day [day] of its month, counting [from]. Months too
+     * short to have one are skipped, so day 31 picked in November starts in December.
+     */
+    fun nextOnDayOfMonth(from: LocalDate, day: Int): LocalDate =
+        generateSequence(YearMonth.from(from)) { it.plusMonths(1) }
+            .filter { it.lengthOfMonth() >= day }
+            .map { it.atDay(day) }
+            .first { !it.isBefore(from) }
 
     /** The day the next entry will be added. */
     fun nextDate(entry: RecurringEntry, zone: ZoneId): LocalDate =
