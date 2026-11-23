@@ -2,6 +2,15 @@
 
 Paste the text under each version into the "What's new" box for that release in Play Console. Keep it under 500 characters.
 
+## 0.3.0 beta (versionCode 3)
+
+```
+New in this beta:
+• Repeating entries: turn on Repeat and choose how often, which weekday (like every other Tuesday) or which day of the month (like the 15th), and when the first one is
+• Repeating entries now show the day they repeat on, and you can move a schedule to another day without starting over
+Something wrong or confusing? Use the feedback link on the testing page.
+```
+
 ## 0.2.0 beta (versionCode 2)
 
 ```
